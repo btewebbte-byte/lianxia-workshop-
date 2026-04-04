@@ -56,7 +56,7 @@ export default function ContactPage() {
     {
       title: '电子邮件',
       description: '发送详细需求，获取专业方案',
-      details: 'contact@lianxia.works',
+      details: 'nibulai12345@163.com',
       icon: '📧'
     },
     {
