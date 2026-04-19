@@ -29,8 +29,16 @@ export default function Footer() {
             <h3 className="text-lg font-semibold mb-4">联系</h3>
             <ul className="space-y-2 text-gray-400">
               <li>微信: webpipi</li>
-              <li>邮箱: contact@lianxia.works</li>
+              <li>邮箱: nibulai12345@163.com</li>
               <li>工作时间: 9:00-18:00</li>
+            </ul>
+          </div>
+          
+          <div>
+            <h3 className="text-lg font-semibold mb-4">收款地址</h3>
+            <ul className="space-y-2 text-gray-400">
+              <li>BSC/BNB Chain:</li>
+              <li className="text-xs break-all">0x7393eB772Bc632F6655c3abC235D2202CeaCbbb6</li>
             </ul>
           </div>
           

@@ -11,28 +11,28 @@ export default function Home() {
       <section className="pt-32 pb-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           <div className="text-center">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-orange-500 to-red-500 rounded-2xl mb-8">
+            <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-blue-500 via-cyan-500 to-green-500 rounded-2xl mb-8 shadow-lg">
               <span className="text-3xl">🦞</span>
             </div>
             <h1 className="text-5xl md:text-6xl font-bold text-gray-900 mb-6">
               链虾工坊
-              <span className="block text-3xl md:text-4xl text-orange-500 mt-2">AI驱动的区块链咨询</span>
+              <span className="block text-3xl md:text-4xl bg-gradient-to-r from-blue-500 via-cyan-500 to-green-500 bg-clip-text text-transparent mt-2">AI驱动的区块链咨询</span>
             </h1>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-10">
-              由AI大龙虾🦞全权打理，提供专业的区块链技术咨询、智能合约开发、DeFi策略设计与AI自动化运营服务。
+              由AI大龙虾🦞全权打理，提供专业的多交易所API接入、智能策略交易、DeFi策略设计与AI自动化运营服务。
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link 
-                href="/contact" 
-                className="bg-gradient-to-r from-orange-500 to-red-500 text-white px-8 py-4 rounded-full text-lg font-semibold hover:opacity-90 transition-opacity shadow-lg"
+                href="/trading" 
+                className="bg-gradient-to-r from-blue-500 via-cyan-500 to-green-500 text-white px-8 py-4 rounded-full text-lg font-semibold hover:opacity-90 transition-opacity shadow-lg"
               >
-                免费咨询
+                🦐 智能交易平台
               </Link>
               <Link 
-                href="/services" 
+                href="/contact" 
                 className="bg-white text-gray-800 px-8 py-4 rounded-full text-lg font-semibold border-2 border-gray-300 hover:border-orange-500 transition-colors"
               >
-                查看服务
+                免费咨询
               </Link>
             </div>
           </div>
@@ -115,16 +115,24 @@ export default function Home() {
       {/* CTA Section */}
       <section className="py-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-4xl font-bold text-gray-900 mb-6">开始您的AI驱动业务之旅</h2>
+          <h2 className="text-4xl font-bold text-gray-900 mb-6">开始您的AI驱动交易之旅</h2>
           <p className="text-xl text-gray-600 mb-10">
-            无论您是区块链初创公司还是传统企业转型，链虾工坊都能为您提供专业的AI+区块链解决方案。
+            连接Binance、OKX、Bybit等主流交易所，一个平台管理所有仓位。手动交易或AI自动策略，轻松切换。
           </p>
-          <Link 
-            href="/contact" 
-            className="inline-block bg-gradient-to-r from-orange-500 to-red-500 text-white px-10 py-5 rounded-full text-xl font-semibold hover:opacity-90 transition-opacity shadow-lg"
-          >
-            立即咨询
-          </Link>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link 
+              href="/trading" 
+              className="inline-block bg-gradient-to-r from-blue-500 via-cyan-500 to-green-500 text-white px-10 py-5 rounded-full text-xl font-semibold hover:opacity-90 transition-opacity shadow-lg"
+            >
+              🦐 开启智能交易
+            </Link>
+            <Link 
+              href="/contact" 
+              className="inline-block bg-gradient-to-r from-orange-500 to-red-500 text-white px-10 py-5 rounded-full text-xl font-semibold hover:opacity-90 transition-opacity shadow-lg"
+            >
+              免费咨询
+            </Link>
+          </div>
         </div>
       </section>
       

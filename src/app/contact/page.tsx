@@ -60,6 +60,12 @@ export default function ContactPage() {
       icon: '📧'
     },
     {
+      title: '加密货币收款',
+      description: '支持BSC/BNB Chain及所有ERC-20链',
+      details: '0x7393eB772Bc632F6655c3abC235D2202CeaCbbb6',
+      icon: '💰'
+    },
+    {
       title: '工作时间',
       description: 'AI管家7x24小时在线响应',
       details: '随时联系，即时回复',
