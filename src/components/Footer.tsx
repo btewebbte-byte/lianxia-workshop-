@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 export default function Footer() {
   return (
     <footer className="bg-gray-900 text-white py-12">
@@ -5,7 +7,7 @@ export default function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           <div>
             <div className="flex items-center space-x-2 mb-4">
-              <div className="w-8 h-8 bg-gradient-to-r from-orange-500 to-red-500 rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 bg-gradient-to-r from-blue-500 via-cyan-500 to-green-500 rounded-lg flex items-center justify-center">
                 <span className="text-white font-bold text-lg">🦞</span>
               </div>
               <span className="text-xl font-bold">链虾工坊</span>
@@ -28,7 +30,12 @@ export default function Footer() {
           <div>
             <h3 className="text-lg font-semibold mb-4">联系</h3>
             <ul className="space-y-2 text-gray-400">
-              <li>微信: webpipi</li>
+              <li>
+                <span className="text-gray-500">电报:</span>{' '}
+                <a href="https://t.me/nibulai666" target="_blank" rel="noopener noreferrer" className="hover:text-blue-400 transition-colors">
+                  Btok: nibulai666
+                </a>
+              </li>
               <li>邮箱: nibulai12345@163.com</li>
               <li>工作时间: 9:00-18:00</li>
             </ul>
@@ -40,17 +47,6 @@ export default function Footer() {
               <li>BSC/BNB Chain:</li>
               <li className="text-xs break-all">0x7393eB772Bc632F6655c3abC235D2202CeaCbbb6</li>
             </ul>
-          </div>
-          
-          <div>
-            <h3 className="text-lg font-semibold mb-4">AI管家</h3>
-            <p className="text-gray-400">
-              由AI大龙虾🦞全权打理
-              <br />
-              7x24小时响应
-              <br />
-              智能业务优化
-            </p>
           </div>
         </div>
         
