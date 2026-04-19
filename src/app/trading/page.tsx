@@ -116,12 +116,12 @@ export default function TradingPage() {
   }, [selectedPair.symbol, interval]);
 
   useEffect(() => {
-    const loadData = async () => {
-      await fetchTicker();
-      await fetchKline();
+    const loadData = () => {
+      fetchTicker();
+      fetchKline();
     };
     loadData();
-    const id = setInterval(loadData, 3000);
+    const id = setInterval(loadData, 3000) as unknown as number;
     return () => clearInterval(id);
   }, [selectedPair.symbol, interval]);
 
