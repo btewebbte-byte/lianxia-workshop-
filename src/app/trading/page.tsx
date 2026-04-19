@@ -118,7 +118,7 @@ export default function TradingPage() {
   useEffect(() => {
     fetchTicker();
     fetchKline();
-    const interval_id = setInterval(fetchTicker, 3000);
+    const interval_id = setInterval(() => fetchTicker(), 3000);
     return () => clearInterval(interval_id);
   }, [fetchTicker, fetchKline]);
 
