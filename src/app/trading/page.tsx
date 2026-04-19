@@ -101,7 +101,7 @@ export default function TradingPage() {
     bids: [[95000, 1.5], [94900, 2.3], [94800, 1.8], [94700, 0.9], [94600, 1.2]],
     asks: [[95100, 2.1], [95200, 1.6], [95300, 2.8], [95400, 1.1], [95500, 0.7]],
   });
-  const [manualOrder, setManualOrder] = useState({ type: "buy", amount: "", price: "" });
+  const [manualOrder, setManualOrder] = useState<{ type: "buy" | "sell"; amount: string; price: string }>({ type: "buy", amount: "", price: "" });
 
   const toggleExchange = (exchange: Exchange) => {
     setSelectedExchanges((prev) =>

@@ -10,19 +10,19 @@ export default function ServicesPage() {
         {
           title: '区块链架构咨询',
           description: '公链/联盟链选型、节点部署、共识机制设计',
-          price: '¥5,000起',
+          price: '$500起',
           features: ['技术选型分析', '架构设计文档', '实施路线图']
         },
         {
           title: '智能合约开发',
           description: 'Solidity/Rust智能合约开发、测试与部署',
-          price: '¥8,000起',
+          price: '$800起',
           features: ['合约代码开发', '单元测试', '主网部署']
         },
         {
           title: '合约安全审计',
           description: '智能合约安全漏洞检测与修复建议',
-          price: '¥10,000起',
+          price: '$1,000起',
           features: ['静态分析', '动态测试', '审计报告']
         }
       ]
@@ -33,19 +33,19 @@ export default function ServicesPage() {
         {
           title: '流动性挖矿策略',
           description: 'LP挖矿收益优化、无常损失对冲',
-          price: '¥6,000起',
+          price: '$600起',
           features: ['收益模拟', '风险评估', '策略实施']
         },
         {
           title: '收益聚合器设计',
           description: '多协议收益聚合、自动复投策略',
-          price: '¥12,000起',
+          price: '$1,200起',
           features: ['协议集成', '风控机制', 'UI设计']
         },
         {
           title: '交易策略开发',
           description: '量化交易策略、套利机器人开发',
-          price: '¥15,000起',
+          price: '$1,500起',
           features: ['策略回测', '实盘部署', '监控系统']
         }
       ]
@@ -56,19 +56,19 @@ export default function ServicesPage() {
         {
           title: 'AI业务自动化',
           description: '工作流自动化、数据采集与处理',
-          price: '¥4,000起',
+          price: '$400起',
           features: ['流程分析', '自动化设计', '部署维护']
         },
         {
           title: '数据分析与报告',
           description: '链上数据分析、可视化报表生成',
-          price: '¥3,000起',
+          price: '$300起',
           features: ['数据采集', '分析建模', '报告生成']
         },
         {
           title: 'AI客服系统',
           description: '智能客服机器人、多渠道响应',
-          price: '¥8,000起',
+          price: '$800起',
           features: ['对话设计', '系统集成', '持续优化']
         }
       ]
@@ -113,7 +113,7 @@ export default function ServicesPage() {
                       <div className="flex justify-between items-center">
                         <div>
                           <div className="text-2xl font-bold text-gray-900">{service.price}</div>
-                          <div className="text-sm text-gray-500">标准报价</div>
+                          <div className="text-sm text-gray-500">USDT计价</div>
                         </div>
                         <Link 
                           href="/contact" 
