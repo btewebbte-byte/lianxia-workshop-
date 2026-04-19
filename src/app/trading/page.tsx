@@ -116,11 +116,14 @@ export default function TradingPage() {
   }, [selectedPair.symbol, interval]);
 
   useEffect(() => {
-    fetchTicker();
-    fetchKline();
-    const interval_id = setInterval(() => fetchTicker(), 3000);
-    return () => clearInterval(interval_id);
-  }, [fetchTicker, fetchKline]);
+    const loadData = async () => {
+      await fetchTicker();
+      await fetchKline();
+    };
+    loadData();
+    const id = setInterval(loadData, 3000);
+    return () => clearInterval(id);
+  }, [selectedPair.symbol, interval]);
 
   // Draw candlestick chart
   useEffect(() => {
