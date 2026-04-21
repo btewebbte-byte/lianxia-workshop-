@@ -3,15 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useI18n, Language } from '@/lib/i18n';
 
-type Exchange = 'binance' | 'okx' | 'bybit' | 'bitget' | 'gate';
 type Interval = '1m' | '5m' | '15m' | '1h' | '4h' | '1d';
-
-interface ExchangeConfig {
-  name: string;
-  icon: string;
-  color: string;
-  supported: boolean;
-}
 
 interface Candlestick {
   time: number;
@@ -32,95 +24,142 @@ interface Ticker {
   volume: number;
 }
 
-interface FuturesOrderResult {
-  orderId: string;
-  exchange: string;
-  symbol: string;
+interface TradeRecord {
+  time: string;
   side: string;
-  positionSide: string;
-  quantity: string;
-  priceAvg: string;
-  leverage: number;
-  margin: string;
-  status: string;
-  commission: string;
-  createTime: string;
+  reason: string;
+  price: string;
+  amount: string;
+  pnl?: number;
+  pnl_pct?: number;
+  confidence?: number;
 }
 
-const exchanges: Record<Exchange, ExchangeConfig> = {
-  binance: { name: 'Binance', icon: '₿', color: 'from-yellow-400 to-yellow-600', supported: true },
-  okx: { name: 'OKX', icon: '◯', color: 'from-blue-500 to-blue-700', supported: true },
-  bybit: { name: 'Bybit', icon: '▣', color: 'from-amber-400 to-amber-600', supported: true },
-  bitget: { name: 'Bitget', icon: '◇', color: 'from-green-400 to-green-600', supported: true },
-  gate: { name: 'Gate.io', icon: '◈', color: 'from-blue-400 to-cyan-500', supported: true },
-};
+interface BotStatus {
+  running: boolean;
+  symbol: string;
+  interval: string;
+  confidence: number;
+  rsi: number;
+  macd_signal: string;
+  bb_position: string;
+  position: 'none' | 'long' | 'short';
+  entry_price?: number;
+  leverage: number;
+  stop_loss: number;
+  take_profit: number;
+  daily_loss: number;
+  daily_max_loss: number;
+  consecutive_losses: number;
+  paused: boolean;
+  last_update: string;
+}
 
-// 合约交易对列表
-const futuresPairs = [
-  { symbol: 'BTCUSDT', base: 'BTC', quote: 'USDT', name: 'Bitcoin' },
-  { symbol: 'ETHUSDT', base: 'ETH', quote: 'USDT', name: 'Ethereum' },
-  { symbol: 'SOLUSDT', base: 'SOL', quote: 'USDT', name: 'Solana' },
-  { symbol: 'DOGEUSDT', base: 'DOGE', quote: 'USDT', name: 'Dogecoin' },
-  { symbol: 'BNBUSDT', base: 'BNB', quote: 'USDT', name: 'BNB' },
-  { symbol: 'XRPUSDT', base: 'XRP', quote: 'USDT', name: 'Ripple' },
-  { symbol: 'ADAUSDT', base: 'ADA', quote: 'USDT', name: 'Cardano' },
-  { symbol: 'AVAXUSDT', base: 'AVAX', quote: 'USDT', name: 'Avalanche' },
-];
+interface StrategyIndicators {
+  rsi: number;
+  macd: number;
+  macd_signal: number;
+  macd_hist: number;
+  bb_upper: number;
+  bb_middle: number;
+  bb_lower: number;
+  bb_position: number;
+  support: number;
+  resistance: number;
+  confidence: number;
+  signal: 'buy' | 'sell' | 'hold';
+}
+
+// 币安合约全部交易对（搜索用）
+const ALL_FUTURES_PAIRS = [
+  'BTCUSDT','ETHUSDT','BNBUSDT','XRPUSDT','SOLUSDT','ADAUSDT','DOGEUSDT',
+  'AVAXUSDT','DOTUSDT','MATICUSDT','LINKUSDT','LTCUSDT','SHIBUSDT','TRXUSDT',
+  'TONUSDT','ATOMUSDT','UNIUSDT','XLMUSDT','ETCUSDT','NEARUSDT','APTUSDT',
+  'FILUSDT','ICPUSDT','ARBUSDT','OPUSDT','INJUSDT','SANDUSDT','MANAUSDT',
+  'AAVEUSDT','GRTUSDT','FTMUSDT','ALGOUSDT','EGLDUSDT','THETAUSDT','AXSUSDT',
+  'MKRUSDT','SNXUSDT','RUNEUSDT','KAVAUSDT','ZILUSDT','ENJUSDT','BATUSDT',
+  '1INCHUSDT','CHZUSDT','ENSUSDT','LRCUSDT','Qt','XMRUSDT','NEOUSDT','IOTAUSDT'
+].map(s => ({ symbol: s, base: s.replace('USDT',''), quote: 'USDT' }));
+
+const INTERVALS: Interval[] = ['1m', '5m', '15m', '1h', '4h', '1d'];
 
 export default function TradingPage() {
   const { t } = useI18n();
-  const [selectedExchanges, setSelectedExchanges] = useState<Exchange[]>([]);
-  const [apiKeys, setApiKeys] = useState<Record<string, { apiKey: string; secretKey: string; passphrase?: string }>>({});
-  const [connected, setConnected] = useState<Record<string, boolean>>({});
-  const [showApiModal, setShowApiModal] = useState<Exchange | null>(null);
-  const [selectedPair, setSelectedPair] = useState(futuresPairs[0]);
-  const [interval, setInterval] = useState<Interval>('15m');
-  const [leverage, setLeverage] = useState(10);
-  const [positionSide, setPositionSide] = useState<'LONG' | 'SHORT'>('LONG');
-  const [manualOrder, setManualOrder] = useState<{ amount: string; price: string }>({ amount: '', price: '' });
-  const [candlesticks, setCandlesticks] = useState<Candlestick[]>([]);
+
+  // Bot state
+  const [botStatus, setBotStatus] = useState<BotStatus>({
+    running: false,
+    symbol: 'BTCUSDT',
+    interval: '1h',
+    confidence: 0,
+    rsi: 50,
+    macd_signal: 'hold',
+    bb_position: 'middle',
+    position: 'none',
+    leverage: 10,
+    stop_loss: -5,
+    take_profit: 10,
+    daily_loss: 0,
+    daily_max_loss: 1,
+    consecutive_losses: 0,
+    paused: false,
+    last_update: '--',
+  });
+
+  const [indicators, setIndicators] = useState<StrategyIndicators | null>(null);
   const [ticker, setTicker] = useState<Ticker | null>(null);
-  const [futuresLog, setFuturesLog] = useState<FuturesOrderResult[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [candlesticks, setCandlesticks] = useState<Candlestick[]>([]);
+  const [tradeLog, setTradeLog] = useState<TradeRecord[]>([]);
+  const [selectedPair, setSelectedPair] = useState({ symbol: 'BTCUSDT', base: 'BTC', quote: 'USDT' });
+  const [interval, setIntervalState] = useState<Interval>('1h');
+  const [leverage, setLeverage] = useState(10);
+  const [isLoading, setIsLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSymbolDropdown, setShowSymbolDropdown] = useState(false);
+
+  const botRef = useRef<boolean>(false);
+  const intervalRef = useRef<ReturnType<typeof globalThis.setInterval> | null>(null);
   const chartRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Fetch futures ticker
-  const fetchTicker = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/order?symbol=${selectedPair.symbol}&exchange=binance&type=futures`);
-      const data = await res.json();
-      if (!data.error) setTicker(data);
-    } catch (e) {
-      console.error('Failed to fetch ticker:', e);
-    }
-  }, [selectedPair.symbol]);
+  const filteredPairs = ALL_FUTURES_PAIRS.filter(p =>
+    p.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    p.base.toLowerCase().includes(searchQuery.toLowerCase())
+  ).slice(0, 20);
 
-  // Fetch K-line data
-  const fetchKline = useCallback(async () => {
+  // 获取行情数据
+  const fetchData = useCallback(async () => {
     try {
-      const res = await fetch(`/api/kline?symbol=${selectedPair.symbol}&interval=${interval}&type=futures`);
-      const data = await res.json();
-      if (Array.isArray(data)) setCandlesticks(data);
-    } catch (e) {
-      console.error('Failed to fetch kline:', e);
-    }
-  }, [selectedPair.symbol, interval]);
+      const [tickerRes, klineRes, botRes] = await Promise.all([
+        fetch(`/api/order?symbol=${selectedPair.symbol}&exchange=binance&type=futures`),
+        fetch(`/api/kline?symbol=${selectedPair.symbol}&interval=${interval}&type=futures`),
+        fetch(`/api/botstatus?symbol=${selectedPair.symbol}`),
+      ]);
 
+      const tickerData = await tickerRes.json();
+      const klineData = await klineRes.json();
+      const botData = await botRes.json();
+
+      if (!tickerData.error) setTicker(tickerData);
+      if (Array.isArray(klineData)) setCandlesticks(klineData);
+      if (botData.running !== undefined) {
+        setBotStatus(prev => ({ ...prev, ...botData, leverage, interval }));
+      }
+      if (botData.indicators) setIndicators(botData.indicators);
+      if (botData.tradeLog) setTradeLog(botData.tradeLog);
+    } catch (e) {
+      console.error('Fetch error:', e);
+    }
+  }, [selectedPair.symbol, interval, leverage]);
+
+  // 初始加载 + 切换交易对时刷新
   useEffect(() => {
-    const loadData = () => {
-      fetchTicker();
-      fetchKline();
-    };
-    loadData();
-    const id = globalThis.setInterval(loadData, 3000);
-    return () => globalThis.clearInterval(id);
-  }, [selectedPair.symbol, interval]);
+    fetchData();
+  }, [fetchData]);
 
-  // Draw candlestick chart
+  // K线图画图
   useEffect(() => {
     if (!canvasRef.current || !candlesticks.length) return;
-    
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -134,15 +173,10 @@ export default function TradingPage() {
     ctx.fillStyle = '#0f172a';
     ctx.fillRect(0, 0, width, height);
 
-    if (candlesticks.length === 0) return;
-
     const prices = candlesticks.flatMap(c => [c.high, c.low]);
     const minPrice = Math.min(...prices);
     const maxPrice = Math.max(...prices);
     const priceRange = maxPrice - minPrice || 1;
-
-    const volumes = candlesticks.map(c => c.volume);
-    const maxVolume = Math.max(...volumes);
 
     const candleWidth = Math.max(2, chartWidth / candlesticks.length - 2);
 
@@ -154,7 +188,6 @@ export default function TradingPage() {
       ctx.moveTo(padding, y);
       ctx.lineTo(width - padding, y);
       ctx.stroke();
-      
       const price = maxPrice - (priceRange * i) / 4;
       ctx.fillStyle = '#94a3b8';
       ctx.font = '10px monospace';
@@ -165,7 +198,7 @@ export default function TradingPage() {
       const x = padding + (i * chartWidth) / candlesticks.length + candleWidth / 2;
       const isGreen = candle.close >= candle.open;
       const color = isGreen ? '#22c55e' : '#ef4444';
-      
+
       const highY = padding + (1 - (candle.high - minPrice) / priceRange) * chartHeight;
       const lowY = padding + (1 - (candle.low - minPrice) / priceRange) * chartHeight;
       ctx.strokeStyle = color;
@@ -179,14 +212,27 @@ export default function TradingPage() {
       const closeY = padding + (1 - (candle.close - minPrice) / priceRange) * chartHeight;
       const bodyTop = Math.min(openY, closeY);
       const bodyHeight = Math.max(1, Math.abs(closeY - openY));
-      
       ctx.fillStyle = color;
       ctx.fillRect(x - candleWidth / 2, bodyTop, candleWidth, bodyHeight);
-
-      const volHeight = (candle.volume / maxVolume) * 40;
-      ctx.fillStyle = isGreen ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)';
-      ctx.fillRect(x - candleWidth / 2, height - padding + 10, candleWidth, volHeight);
     });
+
+    // 标注布林带
+    if (indicators) {
+      const { bb_upper, bb_lower } = indicators;
+      const upperY = padding + (1 - (bb_upper - minPrice) / priceRange) * chartHeight;
+      const lowerY = padding + (1 - (bb_lower - minPrice) / priceRange) * chartHeight;
+      ctx.strokeStyle = 'rgba(168, 85, 247, 0.6)';
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(padding, upperY);
+      ctx.lineTo(width - padding, upperY);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(padding, lowerY);
+      ctx.lineTo(width - padding, lowerY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
 
     if (ticker) {
       const priceY = padding + (1 - (ticker.price - minPrice) / priceRange) * chartHeight;
@@ -198,20 +244,20 @@ export default function TradingPage() {
       ctx.lineTo(width - padding, priceY);
       ctx.stroke();
       ctx.setLineDash([]);
-      
       ctx.fillStyle = '#3b82f6';
       ctx.fillRect(width - padding, priceY - 10, 80, 20);
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 11px monospace';
       ctx.fillText(`$${ticker.price.toFixed(2)}`, width - padding + 5, priceY + 4);
     }
-  }, [candlesticks, ticker]);
+  }, [candlesticks, indicators, ticker]);
 
+  // Canvas resize
   useEffect(() => {
     const handleResize = () => {
       if (chartRef.current && canvasRef.current) {
         canvasRef.current.width = chartRef.current.clientWidth;
-        canvasRef.current.height = 400;
+        canvasRef.current.height = 380;
       }
     };
     handleResize();
@@ -219,55 +265,69 @@ export default function TradingPage() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const toggleExchange = (exchange: Exchange) => {
-    setSelectedExchanges(prev => prev.includes(exchange) ? prev.filter(e => e !== exchange) : [...prev, exchange]);
-  };
-
-  const handleConnect = (exchange: Exchange) => setShowApiModal(exchange);
-
-  const handleApiSubmit = (exchange: Exchange, keys: { apiKey: string; secretKey: string; passphrase?: string }) => {
-    setApiKeys(prev => ({ ...prev, [exchange]: keys }));
-    setConnected(prev => ({ ...prev, [exchange]: true }));
-    setShowApiModal(null);
-  };
-
-  const handleOpenPosition = async () => {
-    if (!manualOrder.amount) return;
-    if (!connected.binance) {
-      alert(t('trading.noApi'));
-      return;
-    }
-    
-    setLoading(true);
+  // 启动机器人
+  const handleStart = async () => {
+    setIsLoading(true);
     try {
-      const res = await fetch('/api/order', {
+      const res = await fetch('/api/botstatus', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          exchange: 'binance',
+          action: 'start',
           symbol: selectedPair.symbol,
-          side: 'BUY',
-          positionSide: positionSide,
-          type: 'MARKET',
-          quantity: manualOrder.amount,
-          leverage: leverage,
-          apiKey: apiKeys.binance?.apiKey,
-          secretKey: apiKeys.binance?.secretKey,
-          isFutures: true,
+          interval,
+          leverage,
         }),
       });
-      const result = await res.json();
-      if (result.error) {
-        alert(`${t('trading.fail')}: ${result.error}`);
-      } else {
-        setFuturesLog(prev => [result, ...prev]);
-        alert(`${t('trading.success')}\n${t('trading.orderId')}: ${result.orderId}\n${t('trading.direction')}: ${positionSide === 'LONG' ? t('trading.long') : t('trading.short')}\n${t('trading.avgPrice')}: $${result.priceAvg}\n${t('trading.amount')}: ${result.quantity} ${selectedPair.base}`);
-        setManualOrder({ amount: '', price: '' });
+      const data = await res.json();
+      if (data.success) {
+        botRef.current = true;
+        setBotStatus(prev => ({ ...prev, running: true, symbol: selectedPair.symbol, interval, leverage }));
+        // 启动轮询
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        intervalRef.current = globalThis.setInterval(fetchData, 10000); // 每10秒刷新
       }
     } catch (e) {
-      alert(`${t('trading.fail')}`);
+      console.error('Start error:', e);
     }
-    setLoading(false);
+    setIsLoading(false);
+  };
+
+  // 停止机器人
+  const handleStop = async () => {
+    setIsLoading(true);
+    try {
+      await fetch('/api/botstatus', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'stop' }),
+      });
+      botRef.current = false;
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      setBotStatus(prev => ({ ...prev, running: false }));
+    } catch (e) {
+      console.error('Stop error:', e);
+    }
+    setIsLoading(false);
+  };
+
+  // 清理
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
+
+  const getSignalColor = (signal: string) => {
+    if (signal === 'buy') return 'text-green-400';
+    if (signal === 'sell') return 'text-red-400';
+    return 'text-gray-400';
+  };
+
+  const getConfidenceColor = (conf: number) => {
+    if (conf >= 80) return 'text-green-400';
+    if (conf >= 60) return 'text-yellow-400';
+    return 'text-red-400';
   };
 
   return (
@@ -282,12 +342,14 @@ export default function TradingPage() {
               <h1 className='text-3xl md:text-4xl font-bold text-white'>
                 {t('trading.title')}<span className='text-blue-400'> {t('trading.futures')}</span>
               </h1>
-              <p className='text-gray-400 mt-1'>{t('trading.subtitle')}</p>
+              <p className='text-gray-400 mt-1'>
+                {t('trading.subtitle')}
+              </p>
             </div>
             <div className='flex items-center gap-3'>
-              <span className='flex items-center gap-2 bg-green-500/20 text-green-400 px-4 py-2 rounded-full text-sm'>
-                <span className='w-2 h-2 bg-green-400 rounded-full animate-pulse'></span>
-                {t('trading.futures')}
+              <span className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold ${botStatus.running ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                <span className={`w-2 h-2 rounded-full animate-pulse ${botStatus.running ? 'bg-green-400' : 'bg-red-400'}`}></span>
+                {botStatus.running ? '运行中' : '已停止'}
               </span>
             </div>
           </div>
@@ -297,234 +359,231 @@ export default function TradingPage() {
       <div className='px-4 sm:px-6 lg:px-8 pb-12'>
         <div className='max-w-7xl mx-auto space-y-6'>
 
-          <div className='grid grid-cols-1 lg:grid-cols-4 gap-6'>
-            {/* Left Panel - Exchanges */}
-            <div className='lg:col-span-1 space-y-4'>
-              <div className='bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 border border-slate-700'>
-                <h2 className='text-lg font-bold text-white mb-4 flex items-center gap-2'>
-                  <span className='w-7 h-7 bg-blue-500/20 rounded-lg flex items-center justify-center text-blue-400 text-sm'>🔗</span>
-                  {t('trading.exchange')}
-                </h2>
-                <div className='space-y-2'>
-                  {(Object.keys(exchanges) as Exchange[]).map(exchange => {
-                    const config = exchanges[exchange];
-                    const isSelected = selectedExchanges.includes(exchange);
-                    const isConnected = connected[exchange];
-                    return (
-                      <div key={exchange} className={`p-3 rounded-xl border-2 transition-all cursor-pointer ${isSelected ? 'border-blue-500 bg-blue-500/10' : 'border-slate-700 bg-slate-800/50 hover:border-slate-600'} ${isConnected ? 'border-green-500/50 bg-green-500/5' : ''}`} onClick={() => !isConnected && toggleExchange(exchange)}>
-                        <div className='flex items-center justify-between'>
-                          <div className='flex items-center gap-2'>
-                            <div className={`w-8 h-8 bg-gradient-to-r ${config.color} rounded-lg flex items-center justify-center text-white text-xs font-bold`}>{config.icon}</div>
-                            <span className='text-white text-sm'>{config.name}</span>
-                          </div>
-                          {!isConnected && isSelected && (
-                            <button onClick={e => { e.stopPropagation(); handleConnect(exchange); }} className='px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-lg'>API</button>
-                          )}
-                          {isConnected && <span className='text-green-400 text-xs'>✓</span>}
+          {/* 控制面板 */}
+          <div className='bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 border border-slate-700'>
+            <div className='flex flex-wrap items-center gap-4'>
+              {/* 币种搜索 */}
+              <div className='relative'>
+                <label className='text-xs text-gray-400 block mb-1'>{t('trading.selectSymbol')}</label>
+                <div className='relative'>
+                  <input
+                    type='text'
+                    value={searchQuery || selectedPair.symbol}
+                    onChange={e => { setSearchQuery(e.target.value); setShowSymbolDropdown(true); }}
+                    onFocus={() => setShowSymbolDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowSymbolDropdown(false), 200)}
+                    className='bg-slate-700 text-white px-4 py-2 rounded-xl border border-slate-600 w-48 focus:outline-none focus:border-blue-500'
+                    placeholder='搜索币种...'
+                  />
+                  {showSymbolDropdown && (
+                    <div className='absolute top-full mt-1 left-0 w-64 bg-slate-800 border border-slate-600 rounded-xl shadow-xl z-50 max-h-64 overflow-y-auto'>
+                      {filteredPairs.length === 0 && <div className='p-3 text-gray-400 text-sm'>无结果</div>}
+                      {filteredPairs.map(pair => (
+                        <div key={pair.symbol} className='flex items-center justify-between px-4 py-2 hover:bg-slate-700 cursor-pointer' onMouseDown={() => {
+                          setSelectedPair(pair);
+                          setSearchQuery('');
+                          setShowSymbolDropdown(false);
+                        }}>
+                          <span className='text-white font-bold'>{pair.base}</span>
+                          <span className='text-yellow-400 text-xs'>futures</span>
                         </div>
-                      </div>
-                    );
-                  })}
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Connected Exchanges */}
-              {Object.values(connected).some(v => v) && (
-                <div className='bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 border border-green-500/30'>
-                  <h3 className='text-sm font-bold text-green-400 mb-3'>✓ {t('trading.connected')}</h3>
-                  <div className='space-y-2'>
-                    {Object.entries(connected).filter(([_, v]) => v).map(([ex]) => (
-                      <div key={ex} className='flex items-center gap-2 p-2 bg-slate-700/50 rounded-lg'>
-                        <div className={`w-6 h-6 bg-gradient-to-r ${exchanges[ex as Exchange].color} rounded text-xs flex items-center justify-center text-white font-bold`}>{exchanges[ex as Exchange].icon}</div>
-                        <span className='text-white text-sm'>{exchanges[ex as Exchange].name}</span>
-                        <span className='text-green-400 text-xs ml-auto'>{t('trading.online')}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Leverage Selector */}
-              <div className='bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 border border-slate-700'>
-                <h3 className='text-sm font-bold text-white mb-3'>{t('trading.leverage')}</h3>
-                <div className='grid grid-cols-4 gap-2'>
-                  {[5, 10, 15, 20].map(lev => (
-                    <button key={lev} onClick={() => setLeverage(lev)} className={`py-2 rounded-lg text-sm font-bold transition-all ${leverage === lev ? 'bg-blue-500 text-white' : 'bg-slate-700 text-gray-400 hover:bg-slate-600'}`}>
-                      {lev}x
+              {/* 周期选择 */}
+              <div>
+                <label className='text-xs text-gray-400 block mb-1'>K线周期</label>
+                <div className='flex gap-1'>
+                  {INTERVALS.map(int => (
+                    <button key={int} onClick={() => setIntervalState(int)} className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${interval === int ? 'bg-blue-500 text-white' : 'bg-slate-700 text-gray-400 hover:bg-slate-600'}`}>
+                      {int}
                     </button>
                   ))}
                 </div>
-                <div className='mt-3'>
-                  <input type='range' min='1' max='125' value={leverage} onChange={e => setLeverage(parseInt(e.target.value))} className='w-full accent-blue-500' />
-                  <div className='flex justify-between text-xs text-gray-500 mt-1'>
-                    <span>1x</span>
-                    <span className='text-blue-400 font-bold'>{leverage}x</span>
-                    <span>125x</span>
-                  </div>
-                </div>
+              </div>
+
+              {/* 杠杆 */}
+              <div>
+                <label className='text-xs text-gray-400 block mb-1'>{t('trading.leverage')}: {leverage}x</label>
+                <input type='range' min='1' max='125' value={leverage} onChange={e => setLeverage(parseInt(e.target.value))} className='w-24 accent-blue-500' />
+              </div>
+
+              {/* 启动/停止按钮 */}
+              <div className='ml-auto flex gap-3 items-end'>
+                {!botStatus.running ? (
+                  <button onClick={handleStart} disabled={isLoading} className='bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white px-8 py-3 rounded-xl font-bold text-lg transition-all disabled:opacity-50 shadow-lg shadow-green-500/30'>
+                    ▶ 启动策略
+                  </button>
+                ) : (
+                  <button onClick={handleStop} disabled={isLoading} className='bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600 text-white px-8 py-3 rounded-xl font-bold text-lg transition-all disabled:opacity-50 shadow-lg shadow-red-500/30'>
+                    ⏹ 停止策略
+                  </button>
+                )}
               </div>
             </div>
+          </div>
 
-            {/* Center Panel - Chart & Trading */}
-            <div className='lg:col-span-3 space-y-4'>
-              {/* Trading Pair & Price */}
+          <div className='grid grid-cols-1 lg:grid-cols-3 gap-6'>
+            {/* 左侧 - 指标与状态 */}
+            <div className='space-y-4'>
+              {/* 策略信号 */}
               <div className='bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 border border-slate-700'>
-                <div className='flex flex-wrap items-center justify-between gap-4 mb-4'>
-                  <div className='flex items-center gap-3'>
-                    <select value={selectedPair.symbol} onChange={e => setSelectedPair(futuresPairs.find(p => p.symbol === e.target.value) || futuresPairs[0])} className='bg-slate-700 text-white px-4 py-2 rounded-xl border border-slate-600 focus:outline-none focus:border-blue-500'>
-                      {futuresPairs.map(pair => (
-                        <option key={pair.symbol} value={pair.symbol}>{pair.base}/{pair.quote}</option>
-                      ))}
-                    </select>
-                    <div className='text-2xl font-bold text-white'>{selectedPair.base}/{selectedPair.quote}</div>
-                    <span className='bg-yellow-500/20 text-yellow-400 px-3 py-1 rounded-full text-xs font-bold'>futures</span>
+                <h3 className='text-sm font-bold text-gray-400 mb-3'>📊 多指标综合置信度</h3>
+                <div className='text-center mb-4'>
+                  <div className={`text-5xl font-bold ${getConfidenceColor(indicators?.confidence || 0)}`}>
+                    {indicators?.confidence?.toFixed(1) || '0.0'}%
                   </div>
-                  <div className='flex items-center gap-2'>
-                    {(['1m', '5m', '15m', '1h', '4h', '1d'] as Interval[]).map(int => (
-                      <button key={int} onClick={() => setInterval(int)} className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${interval === int ? 'bg-blue-500 text-white' : 'bg-slate-700 text-gray-400 hover:bg-slate-600'}`}>{int}</button>
-                    ))}
+                  <div className={`text-lg font-bold mt-1 ${getSignalColor(indicators?.signal || 'hold')}`}>
+                    {indicators?.signal === 'buy' ? '📈 买入信号' : indicators?.signal === 'sell' ? '📉 卖出信号' : '⏸ 观望'}
                   </div>
                 </div>
-
-                {ticker && (
-                  <div className='grid grid-cols-2 md:grid-cols-5 gap-3 mb-4'>
-                    <div className='bg-slate-700/50 rounded-xl p-3'>
-                      <div className='text-xs text-gray-400'>{t('trading.price')}</div>
-                      <div className='text-xl font-bold text-white'>${ticker.price.toFixed(2)}</div>
-                    </div>
-                    <div className='bg-slate-700/50 rounded-xl p-3'>
-                      <div className='text-xs text-gray-400'>{t('trading.change24h')}</div>
-                      <div className={`text-xl font-bold ${ticker.priceChangePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {ticker.priceChangePercent >= 0 ? '+' : ''}{ticker.priceChangePercent.toFixed(2)}%
-                      </div>
-                    </div>
-                    <div className='bg-slate-700/50 rounded-xl p-3'>
-                      <div className='text-xs text-gray-400'>{t('trading.high24h')}</div>
-                      <div className='text-xl font-bold text-green-400'>${ticker.high.toFixed(2)}</div>
-                    </div>
-                    <div className='bg-slate-700/50 rounded-xl p-3'>
-                      <div className='text-xs text-gray-400'>{t('trading.low24h')}</div>
-                      <div className='text-xl font-bold text-red-400'>${ticker.low.toFixed(2)}</div>
-                    </div>
-                    <div className='bg-slate-700/50 rounded-xl p-3'>
-                      <div className='text-xs text-gray-400'>{t('trading.volume24h')}</div>
-                      <div className='text-xl font-bold text-cyan-400'>{(ticker.volume / 1000).toFixed(1)}K</div>
-                    </div>
-                  </div>
-                )}
-
-                {/* K-line Chart */}
-                <div ref={chartRef} className='w-full rounded-xl overflow-hidden'>
-                  <canvas ref={canvasRef} className='w-full' height={400} />
+                <div className='space-y-2 text-sm'>
+                  <div className='flex justify-between'><span className='text-gray-400'>RSI(14)</span><span className={indicators?.rsi && indicators.rsi < 30 ? 'text-green-400' : indicators?.rsi && indicators.rsi > 70 ? 'text-red-400' : 'text-white'}>{indicators?.rsi?.toFixed(1) || '--'}</span></div>
+                  <div className='flex justify-between'><span className='text-gray-400'>MACD</span><span className={indicators?.macd && indicators.macd > indicators.macd_signal ? 'text-green-400' : 'text-red-400'}>{indicators?.macd?.toFixed(2) || '--'}</span></div>
+                  <div className='flex justify-between'><span className='text-gray-400'>MACD Signal</span><span className='text-cyan-400'>{indicators?.macd_signal?.toFixed(2) || '--'}</span></div>
+                  <div className='flex justify-between'><span className='text-gray-400'>布林带位置</span><span className={indicators?.bb_position && indicators.bb_position < 0.2 ? 'text-green-400' : indicators?.bb_position && indicators.bb_position > 0.8 ? 'text-red-400' : 'text-white'}>{indicators?.bb_position?.toFixed(3) || '--'}</span></div>
+                  <div className='flex justify-between'><span className='text-gray-400'>布林上轨</span><span className='text-purple-400'>${indicators?.bb_upper?.toFixed(2) || '--'}</span></div>
+                  <div className='flex justify-between'><span className='text-gray-400'>布林下轨</span><span className='text-purple-400'>${indicators?.bb_lower?.toFixed(2) || '--'}</span></div>
+                  <div className='flex justify-between'><span className='text-gray-400'>支撑位</span><span className='text-green-400'>${indicators?.support?.toFixed(2) || '--'}</span></div>
+                  <div className='flex justify-between'><span className='text-gray-400'>阻力位</span><span className='text-red-400'>${indicators?.resistance?.toFixed(2) || '--'}</span></div>
                 </div>
               </div>
 
-              {/* Position Direction & Order Form */}
+              {/* 风险状态 */}
               <div className='bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 border border-slate-700'>
-                <h3 className='text-lg font-bold text-white mb-4'>{t('trading.openPosition')}</h3>
-                
-                {/* Direction Selector */}
-                <div className='flex gap-3 mb-4'>
-                  <button onClick={() => setPositionSide('LONG')} className={`flex-1 py-3 rounded-xl font-bold text-lg transition-all ${positionSide === 'LONG' ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg shadow-green-500/30' : 'bg-slate-700 text-gray-400 hover:bg-slate-600'}`}>
-                    ↑ {t('trading.long')}
-                  </button>
-                  <button onClick={() => setPositionSide('SHORT')} className={`flex-1 py-3 rounded-xl font-bold text-lg transition-all ${positionSide === 'SHORT' ? 'bg-gradient-to-r from-red-500 to-rose-500 text-white shadow-lg shadow-red-500/30' : 'bg-slate-700 text-gray-400 hover:bg-slate-600'}`}>
-                    ↓ {t('trading.short')}
-                  </button>
-                </div>
-
-                <div className='grid grid-cols-2 gap-4 mb-4'>
+                <h3 className='text-sm font-bold text-gray-400 mb-3'>🛡️ 风险状态</h3>
+                <div className='space-y-3 text-sm'>
                   <div>
-                    <label className='text-sm text-gray-400 mb-1 block'>{t('trading.quantity')} ({selectedPair.base})</label>
-                    <input type='number' value={manualOrder.amount} onChange={e => setManualOrder({ ...manualOrder, amount: e.target.value })} placeholder='0.00' className='w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500' />
-                  </div>
-                  <div>
-                    <label className='text-sm text-gray-400 mb-1 block'>{t('trading.leverage')}</label>
-                    <div className='w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-3 text-white'>
-                      {leverage}x {t('trading.futures')}
+                    <div className='flex justify-between mb-1'>
+                      <span className='text-gray-400'>今日亏损</span>
+                      <span className={botStatus.daily_loss >= botStatus.daily_max_loss ? 'text-red-400 font-bold' : 'text-white'}>${botStatus.daily_loss.toFixed(2)} / ${botStatus.daily_max_loss}</span>
+                    </div>
+                    <div className='w-full bg-slate-700 rounded-full h-2'>
+                      <div className='bg-red-500 h-2 rounded-full transition-all' style={{ width: `${Math.min(100, (botStatus.daily_loss / botStatus.daily_max_loss) * 100)}%` }}></div>
                     </div>
                   </div>
+                  <div className='flex justify-between'>
+                    <span className='text-gray-400'>连续亏损</span>
+                    <span className={botStatus.consecutive_losses >= 3 ? 'text-red-400 font-bold' : 'text-white'}>{botStatus.consecutive_losses}次</span>
+                  </div>
+                  <div className='flex justify-between'>
+                    <span className='text-gray-400'>持仓状态</span>
+                    <span className={botStatus.position === 'none' ? 'text-gray-400' : botStatus.position === 'long' ? 'text-green-400' : 'text-red-400'}>
+                      {botStatus.position === 'none' ? '空仓' : botStatus.position === 'long' ? '做多' : '做空'}
+                    </span>
+                  </div>
+                  {botStatus.entry_price && (
+                    <div className='flex justify-between'>
+                      <span className='text-gray-400'>开仓价</span>
+                      <span className='text-white'>${botStatus.entry_price.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className='flex justify-between'>
+                    <span className='text-gray-400'>杠杆</span>
+                    <span className='text-yellow-400'>{botStatus.leverage}x</span>
+                  </div>
+                  <div className='flex justify-between'>
+                    <span className='text-gray-400'>止损/止盈</span>
+                    <span className='text-white'>{botStatus.stop_loss}% / +{botStatus.take_profit}%</span>
+                  </div>
+                  {botStatus.paused && (
+                    <div className='bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-2 text-center'>
+                      <span className='text-yellow-400 text-xs'>⚠️ 连续亏损触发暂停</span>
+                    </div>
+                  )}
                 </div>
-
-                {/* Position Info */}
-                <div className='bg-slate-700/30 rounded-xl p-4 mb-4'>
-                  <div className='grid grid-cols-3 gap-4 text-sm'>
-                    <div>
-                      <span className='text-gray-400'>{t('trading.direction')}: </span>
-                      <span className={positionSide === 'LONG' ? 'text-green-400' : 'text-red-400'}>
-                        {positionSide === 'LONG' ? t('trading.long') : t('trading.short')}
-                      </span>
-                    </div>
-                    <div>
-                      <span className='text-gray-400'>{t('trading.leverage')}: </span>
-                      <span className='text-blue-400'>{leverage}x</span>
-                    </div>
-                    <div>
-                      <span className='text-gray-400'>{t('trading.margin')}: </span>
-                      <span className='text-white'>
-                        {manualOrder.amount && ticker ? `$${(parseFloat(manualOrder.amount) * ticker.price / leverage).toFixed(2)}` : '--'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <button onClick={handleOpenPosition} disabled={loading || !manualOrder.amount || !connected.binance} className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${positionSide === 'LONG' ? 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white' : 'bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600 text-white'} ${(!manualOrder.amount || !connected.binance) ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                  {loading ? t('trading.processing') : `↑↓ ${positionSide === 'LONG' ? t('trading.long') : t('trading.short')} ${selectedPair.base} ${t('trading.openPosition')}`}
-                </button>
-                {!connected.binance && <p className='text-yellow-400 text-xs text-center mt-2'>{t('trading.noApi')}</p>}
               </div>
 
-              {/* Futures Trading Log */}
-              {futuresLog.length > 0 && (
+              {/* 当前行情 */}
+              {ticker && (
                 <div className='bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 border border-slate-700'>
-                  <h3 className='text-lg font-bold text-white mb-4'>📋 {t('trading.futuresLog')}</h3>
+                  <h3 className='text-sm font-bold text-gray-400 mb-3'>💹 {selectedPair.base} 实时行情</h3>
+                  <div className='text-2xl font-bold text-white mb-1'>${ticker.price.toFixed(2)}</div>
+                  <div className={`text-sm font-bold ${ticker.priceChangePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {ticker.priceChangePercent >= 0 ? '▲' : '▼'} {Math.abs(ticker.priceChangePercent).toFixed(2)}%
+                  </div>
+                  <div className='grid grid-cols-2 gap-2 mt-3 text-xs'>
+                    <div className='bg-slate-700/50 rounded-lg p-2'><div className='text-gray-400'>24h高</div><div className='text-green-400'>${ticker.high.toFixed(2)}</div></div>
+                    <div className='bg-slate-700/50 rounded-lg p-2'><div className='text-gray-400'>24h低</div><div className='text-red-400'>${ticker.low.toFixed(2)}</div></div>
+                    <div className='bg-slate-700/50 rounded-lg p-2 col-span-2'><div className='text-gray-400'>24h成交量</div><div className='text-cyan-400'>{(ticker.volume / 1000).toFixed(1)}K</div></div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 中间 - K线图 */}
+            <div className='lg:col-span-2 space-y-4'>
+              {/* K线图 */}
+              <div className='bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 border border-slate-700'>
+                <div className='flex items-center justify-between mb-3'>
+                  <h3 className='text-lg font-bold text-white'>📊 {selectedPair.base}/{selectedPair.quote} K线</h3>
+                  <span className='text-xs text-gray-400'>周期: {interval}</span>
+                </div>
+                <div ref={chartRef} className='w-full rounded-xl overflow-hidden'>
+                  <canvas ref={canvasRef} className='w-full' height={380} />
+                </div>
+              </div>
+
+              {/* 交易日志 */}
+              <div className='bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 border border-slate-700'>
+                <h3 className='text-lg font-bold text-white mb-4'>📋 交易日志</h3>
+                {tradeLog.length === 0 ? (
+                  <div className='text-center text-gray-500 py-8'>暂无交易记录</div>
+                ) : (
                   <div className='overflow-x-auto'>
                     <table className='w-full text-sm'>
                       <thead>
                         <tr className='text-gray-400 border-b border-slate-700'>
-                          <th className='text-left py-2 px-3'>{t('trading.time')}</th>
-                          <th className='text-left py-2 px-3'>{t('trading.orderId')}</th>
-                          <th className='text-left py-2 px-3'>{selectedPair.base}</th>
-                          <th className='text-left py-2 px-3'>{t('trading.direction')}</th>
-                          <th className='text-left py-2 px-3'>{t('trading.leverage')}</th>
-                          <th className='text-left py-2 px-3'>{t('trading.avgPrice')}</th>
-                          <th className='text-left py-2 px-3'>{t('trading.margin')}</th>
+                          <th className='text-left py-2 px-2'>时间</th>
+                          <th className='text-left py-2 px-2'>方向</th>
+                          <th className='text-left py-2 px-2'>原因</th>
+                          <th className='text-left py-2 px-2'>价格</th>
+                          <th className='text-left py-2 px-2'>数量</th>
+                          <th className='text-left py-2 px-2'>置信度</th>
+                          <th className='text-left py-2 px-2'>盈亏</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {futuresLog.map((log, i) => (
+                        {tradeLog.slice(0, 20).map((trade, i) => (
                           <tr key={i} className='border-b border-slate-700/50 hover:bg-slate-700/30'>
-                            <td className='py-3 px-3 text-gray-400'>{new Date(log.createTime).toLocaleString()}</td>
-                            <td className='py-3 px-3 text-blue-400 font-mono text-xs'>{log.orderId}</td>
-                            <td className='py-3 px-3 text-white font-bold'>{log.quantity} {selectedPair.base}</td>
-                            <td className='py-3 px-3'>
-                              <span className={`px-2 py-1 rounded text-xs font-bold ${log.positionSide === 'LONG' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                                {log.positionSide === 'LONG' ? t('trading.long') : t('trading.short')}
+                            <td className='py-2 px-2 text-gray-400 text-xs'>{new Date(trade.time).toLocaleString()}</td>
+                            <td className='py-2 px-2'>
+                              <span className={`px-2 py-0.5 rounded text-xs font-bold ${trade.side === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                                {trade.side === 'buy' ? '买入' : '卖出'}
                               </span>
                             </td>
-                            <td className='py-3 px-3 text-yellow-400'>{log.leverage}x</td>
-                            <td className='py-3 px-3 text-white'>${log.priceAvg}</td>
-                            <td className='py-3 px-3 text-cyan-400'>${log.margin}</td>
+                            <td className='py-2 px-2 text-gray-300 text-xs'>{trade.reason}</td>
+                            <td className='py-2 px-2 text-white'>${trade.price}</td>
+                            <td className='py-2 px-2 text-white'>{trade.amount}</td>
+                            <td className='py-2 px-2'>
+                              {trade.confidence ? (
+                                <span className={`text-xs font-bold ${trade.confidence >= 75 ? 'text-green-400' : 'text-yellow-400'}`}>{trade.confidence}%</span>
+                              ) : <span className='text-gray-500'>--</span>}
+                            </td>
+                            <td className='py-2 px-2'>
+                              {trade.pnl !== undefined ? (
+                                <span className={trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}>{trade.pnl >= 0 ? '+' : ''}{trade.pnl.toFixed(2)} ({trade.pnl_pct?.toFixed(2)}%)</span>
+                              ) : <span className='text-gray-500'>--</span>}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
-              {/* Market Overview */}
+              {/* 币种快捷选择 */}
               <div className='bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 border border-slate-700'>
                 <h3 className='text-lg font-bold text-white mb-4'>{t('trading.selectSymbol')}</h3>
-                <div className='grid grid-cols-2 md:grid-cols-4 gap-3'>
-                  {futuresPairs.map(pair => (
-                    <div key={pair.symbol} className={`bg-slate-700/50 rounded-xl p-3 cursor-pointer hover:bg-slate-600/50 transition-all ${selectedPair.symbol === pair.symbol ? 'border-2 border-blue-500' : ''}`} onClick={() => setSelectedPair(pair)}>
-                      <div className='flex items-center justify-between mb-1'>
-                        <span className='text-white font-bold'>{pair.base}</span>
-                        <span className='text-yellow-400 text-xs'>futures</span>
-                      </div>
-                      <div className='text-gray-400 text-xs'>{pair.name}</div>
-                    </div>
+                <div className='grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2'>
+                  {ALL_FUTURES_PAIRS.slice(0, 40).map(pair => (
+                    <button key={pair.symbol} onClick={() => { setSelectedPair(pair); setSearchQuery(''); }} className={`py-2 px-2 rounded-lg text-xs font-bold transition-all ${selectedPair.symbol === pair.symbol ? 'bg-blue-500 text-white' : 'bg-slate-700 text-gray-300 hover:bg-slate-600'}`}>
+                      {pair.base}
+                    </button>
                   ))}
                 </div>
               </div>
@@ -532,9 +591,6 @@ export default function TradingPage() {
           </div>
         </div>
       </div>
-
-      {/* API Modal */}
-      {showApiModal && <ApiModal exchange={showApiModal} config={exchanges[showApiModal]} onClose={() => setShowApiModal(null)} onSubmit={keys => handleApiSubmit(showApiModal, keys)} />}
     </div>
   );
 }
@@ -566,53 +622,5 @@ function Navbar() {
         </div>
       </div>
     </nav>
-  );
-}
-
-function ApiModal({ exchange, config, onClose, onSubmit }: { exchange: Exchange; config: ExchangeConfig; onClose: () => void; onSubmit: (keys: { apiKey: string; secretKey: string; passphrase?: string }) => void }) {
-  const [apiKey, setApiKey] = useState('');
-  const [secretKey, setSecretKey] = useState('');
-  const [passphrase, setPassphrase] = useState('');
-
-  const handleSubmit = () => { if (!apiKey || !secretKey) return; onSubmit({ apiKey, secretKey, passphrase }); };
-
-  return (
-    <div className='fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4'>
-      <div className='bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-8 max-w-md w-full border border-slate-700'>
-        <div className='flex items-center justify-between mb-6'>
-          <div className='flex items-center gap-3'>
-            <div className={`w-10 h-10 bg-gradient-to-r ${config.color} rounded-lg flex items-center justify-center text-white font-bold`}>{config.icon}</div>
-            <div><h3 className='text-xl font-bold text-white'>导入 {config.name} API</h3><p className='text-xs text-gray-500'>Futures Trading API</p></div>
-          </div>
-          <button onClick={onClose} className='text-gray-400 hover:text-white text-2xl'>&times;</button>
-        </div>
-
-        <div className='space-y-4'>
-          <div>
-            <label className='text-sm text-gray-400 mb-2 block'>API Key</label>
-            <input type='text' value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder='请输入 API Key' className='w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500' />
-          </div>
-          <div>
-            <label className='text-sm text-gray-400 mb-2 block'>Secret Key</label>
-            <input type='password' value={secretKey} onChange={e => setSecretKey(e.target.value)} placeholder='请输入 Secret Key' className='w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500' />
-          </div>
-          {exchange === 'okx' && (
-            <div>
-              <label className='text-sm text-gray-400 mb-2 block'>Passphrase</label>
-              <input type='password' value={passphrase} onChange={e => setPassphrase(e.target.value)} placeholder='请输入 Passphrase' className='w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500' />
-            </div>
-          )}
-        </div>
-
-        <div className='mt-6 bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4'>
-          <p className='text-yellow-400 text-sm'>⚠️ 请确保API权限开启合约交易权限，不要开启提币权限</p>
-        </div>
-
-        <div className='flex gap-4 mt-6'>
-          <button onClick={onClose} className='flex-1 py-3 bg-slate-700 text-white rounded-xl font-medium hover:bg-slate-600 transition-colors'>取消</button>
-          <button onClick={handleSubmit} disabled={!apiKey || !secretKey} className='flex-1 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl font-medium hover:from-blue-600 hover:to-cyan-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed'>连接</button>
-        </div>
-      </div>
-    </div>
   );
 }
