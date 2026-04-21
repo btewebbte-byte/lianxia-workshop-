@@ -158,6 +158,108 @@ export default function TradingPage() {
     p.base.toLowerCase().includes(searchQuery.toLowerCase())
   ).slice(0, 20);
 
+  // 前端直接调用币安API（绕过Vercel服务器IP限制）
+  const fetchBinanceMarket = useCallback(async () => {
+    const symbol = selectedPair.symbol.toUpperCase();
+    try {
+      // 并行获取K线和ticker
+      const [klineRes, tickerRes] = await Promise.all([
+        fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=100`),
+        fetch(`https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=${symbol}`),
+      ]);
+
+      const klineRaw = await klineRes.json();
+      const tickerRaw = await tickerRes.json();
+
+      if (Array.isArray(klineRaw)) {
+        const cs = klineRaw.map((k: any[]) => ({
+          time: k[0] / 1000,
+          open: parseFloat(k[1]),
+          high: parseFloat(k[2]),
+          low: parseFloat(k[3]),
+          close: parseFloat(k[4]),
+          volume: parseFloat(k[5]),
+        }));
+        setCandlesticks(cs);
+
+        // 计算指标
+        const closes = cs.map((c: Candlestick) => c.close);
+        const highs = cs.map((c: Candlestick) => c.high);
+        const lows = cs.map((c: Candlestick) => c.low);
+        const currentPrice = closes[closes.length - 1];
+
+        // RSI
+        const computeRSI = (cl: number[], p = 14) => {
+          if (cl.length < p + 1) return 50;
+          let g = 0, l = 0;
+          for (let i = cl.length - p; i < cl.length; i++) {
+            const d = cl[i] - cl[i - 1];
+            if (d > 0) g += d; else l += Math.abs(d);
+          }
+          const ag = g / p, al = l / p;
+          if (al === 0) return 100;
+          return 100 - (100 / (1 + ag / al));
+        };
+        const rsi = computeRSI(closes);
+
+        // MACD
+        const ema = (arr: number[], span: number) => {
+          if (arr.length === 0) return arr[0] || 0;
+          const k2 = 2 / (span + 1);
+          let v = arr[0];
+          for (let i = 1; i < arr.length; i++) v = arr[i] * k2 + v * (1 - k2);
+          return v;
+        };
+        const ef = ema(closes, 12), es = ema(closes, 26);
+        const macd = ef - es;
+        const histArr = [];
+        for (let i = 26; i < closes.length; i++) {
+          histArr.push(ema(closes.slice(0, i + 1), 12) - ema(closes.slice(0, i + 1), 26));
+        }
+        const macdSig = histArr.length > 0 ? ema(histArr, 9) : 0;
+        const macdHist = macd - macdSig;
+
+        // 布林带
+        const bbSlice = closes.slice(-20);
+        const bbMid = bbSlice.reduce((a: number, b: number) => a + b, 0) / 20;
+        const bbStd = Math.sqrt(bbSlice.reduce((s: number, v: number) => s + Math.pow(v - bbMid, 2), 0) / 20);
+        const bbUpper = bbMid + bbStd * 2;
+        const bbLower = bbMid - bbStd * 2;
+        const bbRange = bbUpper - bbLower;
+        const bbPos = bbRange > 0 ? (currentPrice - bbLower) / bbRange : 0.5;
+
+        // 支撑阻力
+        const support = Math.min(...lows.slice(-50));
+        const resistance = Math.max(...highs.slice(-50));
+
+        // 置信度
+        let score = 0;
+        if (rsi < 30) score += 25; else if (rsi < 40) score += 15; else if (rsi > 80) score -= 20; else if (rsi > 70) score -= 10; else score += 5;
+        if (macd > macdSig && macdHist > 0) score += 25; else if (macd > macdSig) score += 15; else if (macd < macdSig && macdHist < 0) score -= 15; else if (macd < macdSig) score -= 5;
+        if (currentPrice <= bbLower) score += 20; else if (currentPrice < bbLower * 1.02) score += 10; else if (currentPrice >= bbUpper) score -= 15; else if (currentPrice > bbUpper * 0.98) score -= 5;
+        if (support > 0) { const d = ((currentPrice - support) / support) * 100; if (d < 1) score += 15; else if (d < 2) score += 8; else if (d > 5 && currentPrice > resistance * 0.98) score -= 10; }
+        const confidence = Math.max(0, Math.min(100, 50 + score));
+        const signal: 'buy' | 'sell' | 'hold' = confidence >= 75 && rsi < 70 && macd > macdSig ? 'buy' : (confidence <= 30 || (rsi > 80 && macd < macdSig)) ? 'sell' : 'hold';
+
+        setIndicators({ rsi, macd, macd_signal: macdSig, macd_hist: macdHist, bb_upper: bbUpper, bb_middle: bbMid, bb_lower: bbLower, bb_position: bbPos, support, resistance, confidence, signal });
+      }
+
+      if (tickerRaw && !tickerRaw.code) {
+        setTicker({
+          symbol: tickerRaw.symbol,
+          price: parseFloat(tickerRaw.lastPrice),
+          priceChange: parseFloat(tickerRaw.priceChange),
+          priceChangePercent: parseFloat(tickerRaw.priceChangePercent),
+          high: parseFloat(tickerRaw.highPrice),
+          low: parseFloat(tickerRaw.lowPrice),
+          volume: parseFloat(tickerRaw.volume),
+        });
+      }
+    } catch (e) {
+      console.error('Market fetch error:', e);
+    }
+  }, [selectedPair.symbol, interval]);
+
   const fetchData = useCallback(async () => {
     try {
       const params = new URLSearchParams({
@@ -165,18 +267,14 @@ export default function TradingPage() {
         interval,
         exchange: selectedExchange,
       });
-      const [tickerRes, klineRes, botRes] = await Promise.all([
-        fetch(`/api/order?symbol=${selectedPair.symbol}&exchange=${selectedExchange}&type=futures`),
-        fetch(`/api/kline?symbol=${selectedPair.symbol}&interval=${interval}&type=futures`),
-        fetch(`/api/botstatus?${params.toString()}`),
-      ]);
 
-      const tickerData = await tickerRes.json();
-      const klineData = await klineRes.json();
+      // 前端直接获取市场数据
+      await fetchBinanceMarket();
+
+      // 从botstatus获取订单/策略状态
+      const botRes = await fetch(`/api/botstatus?${params.toString()}`);
       const botData = await botRes.json();
 
-      if (!tickerData.error) setTicker(tickerData);
-      if (Array.isArray(klineData)) setCandlesticks(klineData);
       if (botData.indicators) setIndicators(botData.indicators);
       if (botData.trade_log) setTradeLog(botData.trade_log || []);
       setBotStatus(prev => ({
@@ -198,7 +296,7 @@ export default function TradingPage() {
     } catch (e) {
       console.error('Fetch error:', e);
     }
-  }, [selectedPair.symbol, interval, selectedExchange, apiKeys, leverage]);
+  }, [selectedPair.symbol, interval, selectedExchange, apiKeys, leverage, fetchBinanceMarket]);
 
   useEffect(() => {
     fetchData();
