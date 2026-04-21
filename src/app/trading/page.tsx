@@ -3,7 +3,15 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useI18n, Language } from '@/lib/i18n';
 
+type Exchange = 'binance' | 'okx' | 'bybit';
 type Interval = '1m' | '5m' | '15m' | '1h' | '4h' | '1d';
+type PositionSide = 'LONG' | 'SHORT';
+
+interface ExchangeConfig {
+  name: string;
+  icon: string;
+  color: string;
+}
 
 interface Candlestick {
   time: number;
@@ -30,29 +38,40 @@ interface TradeRecord {
   reason: string;
   price: string;
   amount: string;
+  orderId?: string;
+  exchange?: string;
   pnl?: number;
   pnl_pct?: number;
   confidence?: number;
+  leverage?: number;
+  margin?: number;
+  status?: string;
 }
 
 interface BotStatus {
   running: boolean;
   symbol: string;
   interval: string;
+  leverage: number;
   confidence: number;
   rsi: number;
-  macd_signal: string;
-  bb_position: string;
+  macd: number;
+  macd_signal: number;
+  bb_upper: number;
+  bb_lower: number;
+  bb_position: number;
+  support: number;
+  resistance: number;
+  signal: string;
   position: 'none' | 'long' | 'short';
   entry_price?: number;
-  leverage: number;
-  stop_loss: number;
-  take_profit: number;
+  entry_amount?: number;
   daily_loss: number;
   daily_max_loss: number;
   consecutive_losses: number;
   paused: boolean;
-  last_update: string;
+  connected: boolean;
+  exchange: string;
 }
 
 interface StrategyIndicators {
@@ -70,7 +89,12 @@ interface StrategyIndicators {
   signal: 'buy' | 'sell' | 'hold';
 }
 
-// 币安合约全部交易对（搜索用）
+const exchanges: Record<Exchange, ExchangeConfig> = {
+  binance: { name: 'Binance', icon: '₿', color: 'from-yellow-400 to-yellow-600' },
+  okx: { name: 'OKX', icon: '◯', color: 'from-blue-500 to-blue-700' },
+  bybit: { name: 'Bybit', icon: '▣', color: 'from-amber-400 to-amber-600' },
+};
+
 const ALL_FUTURES_PAIRS = [
   'BTCUSDT','ETHUSDT','BNBUSDT','XRPUSDT','SOLUSDT','ADAUSDT','DOGEUSDT',
   'AVAXUSDT','DOTUSDT','MATICUSDT','LINKUSDT','LTCUSDT','SHIBUSDT','TRXUSDT',
@@ -78,7 +102,7 @@ const ALL_FUTURES_PAIRS = [
   'FILUSDT','ICPUSDT','ARBUSDT','OPUSDT','INJUSDT','SANDUSDT','MANAUSDT',
   'AAVEUSDT','GRTUSDT','FTMUSDT','ALGOUSDT','EGLDUSDT','THETAUSDT','AXSUSDT',
   'MKRUSDT','SNXUSDT','RUNEUSDT','KAVAUSDT','ZILUSDT','ENJUSDT','BATUSDT',
-  '1INCHUSDT','CHZUSDT','ENSUSDT','LRCUSDT','Qt','XMRUSDT','NEOUSDT','IOTAUSDT'
+  '1INCHUSDT','CHZUSDT','ENSUSDT','LRCUSDT','XMRUSDT','NEOUSDT','IOTAUSDT'
 ].map(s => ({ symbol: s, base: s.replace('USDT',''), quote: 'USDT' }));
 
 const INTERVALS: Interval[] = ['1m', '5m', '15m', '1h', '4h', '1d'];
@@ -86,24 +110,32 @@ const INTERVALS: Interval[] = ['1m', '5m', '15m', '1h', '4h', '1d'];
 export default function TradingPage() {
   const { t } = useI18n();
 
-  // Bot state
+  const [selectedExchange, setSelectedExchange] = useState<Exchange>('binance');
+  const [apiKeys, setApiKeys] = useState<{ apiKey: string; secretKey: string; passphrase?: string } | null>(null);
+  const [showApiModal, setShowApiModal] = useState(false);
+
   const [botStatus, setBotStatus] = useState<BotStatus>({
     running: false,
     symbol: 'BTCUSDT',
     interval: '1h',
+    leverage: 10,
     confidence: 0,
     rsi: 50,
-    macd_signal: 'hold',
-    bb_position: 'middle',
+    macd: 0,
+    macd_signal: 0,
+    bb_upper: 0,
+    bb_lower: 0,
+    bb_position: 0.5,
+    support: 0,
+    resistance: 0,
+    signal: 'hold',
     position: 'none',
-    leverage: 10,
-    stop_loss: -5,
-    take_profit: 10,
     daily_loss: 0,
     daily_max_loss: 1,
     consecutive_losses: 0,
     paused: false,
-    last_update: '--',
+    connected: false,
+    exchange: 'binance',
   });
 
   const [indicators, setIndicators] = useState<StrategyIndicators | null>(null);
@@ -117,7 +149,6 @@ export default function TradingPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSymbolDropdown, setShowSymbolDropdown] = useState(false);
 
-  const botRef = useRef<boolean>(false);
   const intervalRef = useRef<ReturnType<typeof globalThis.setInterval> | null>(null);
   const chartRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -127,13 +158,17 @@ export default function TradingPage() {
     p.base.toLowerCase().includes(searchQuery.toLowerCase())
   ).slice(0, 20);
 
-  // 获取行情数据
   const fetchData = useCallback(async () => {
     try {
+      const params = new URLSearchParams({
+        symbol: selectedPair.symbol,
+        interval,
+        exchange: selectedExchange,
+      });
       const [tickerRes, klineRes, botRes] = await Promise.all([
-        fetch(`/api/order?symbol=${selectedPair.symbol}&exchange=binance&type=futures`),
+        fetch(`/api/order?symbol=${selectedPair.symbol}&exchange=${selectedExchange}&type=futures`),
         fetch(`/api/kline?symbol=${selectedPair.symbol}&interval=${interval}&type=futures`),
-        fetch(`/api/botstatus?symbol=${selectedPair.symbol}`),
+        fetch(`/api/botstatus?${params.toString()}`),
       ]);
 
       const tickerData = await tickerRes.json();
@@ -142,17 +177,29 @@ export default function TradingPage() {
 
       if (!tickerData.error) setTicker(tickerData);
       if (Array.isArray(klineData)) setCandlesticks(klineData);
-      if (botData.running !== undefined) {
-        setBotStatus(prev => ({ ...prev, ...botData, leverage, interval }));
-      }
       if (botData.indicators) setIndicators(botData.indicators);
-      if (botData.tradeLog) setTradeLog(botData.tradeLog);
+      if (botData.trade_log) setTradeLog(botData.trade_log || []);
+      setBotStatus(prev => ({
+        ...prev,
+        running: botData.running || false,
+        symbol: botData.symbol || selectedPair.symbol,
+        interval: botData.interval || interval,
+        leverage: botData.leverage || leverage,
+        position: botData.position || 'none',
+        entry_price: botData.entry_price,
+        confidence: botData.confidence || 0,
+        daily_loss: botData.daily_loss || 0,
+        consecutive_losses: botData.consecutive_losses || 0,
+        paused: botData.paused || false,
+        signal: botData.signal || 'hold',
+        connected: apiKeys !== null,
+        exchange: selectedExchange,
+      }));
     } catch (e) {
       console.error('Fetch error:', e);
     }
-  }, [selectedPair.symbol, interval, leverage]);
+  }, [selectedPair.symbol, interval, selectedExchange, apiKeys, leverage]);
 
-  // 初始加载 + 切换交易对时刷新
   useEffect(() => {
     fetchData();
   }, [fetchData]);
@@ -177,7 +224,6 @@ export default function TradingPage() {
     const minPrice = Math.min(...prices);
     const maxPrice = Math.max(...prices);
     const priceRange = maxPrice - minPrice || 1;
-
     const candleWidth = Math.max(2, chartWidth / candlesticks.length - 2);
 
     ctx.strokeStyle = '#334155';
@@ -198,7 +244,6 @@ export default function TradingPage() {
       const x = padding + (i * chartWidth) / candlesticks.length + candleWidth / 2;
       const isGreen = candle.close >= candle.open;
       const color = isGreen ? '#22c55e' : '#ef4444';
-
       const highY = padding + (1 - (candle.high - minPrice) / priceRange) * chartHeight;
       const lowY = padding + (1 - (candle.low - minPrice) / priceRange) * chartHeight;
       ctx.strokeStyle = color;
@@ -207,7 +252,6 @@ export default function TradingPage() {
       ctx.moveTo(x, highY);
       ctx.lineTo(x, lowY);
       ctx.stroke();
-
       const openY = padding + (1 - (candle.open - minPrice) / priceRange) * chartHeight;
       const closeY = padding + (1 - (candle.close - minPrice) / priceRange) * chartHeight;
       const bodyTop = Math.min(openY, closeY);
@@ -216,7 +260,7 @@ export default function TradingPage() {
       ctx.fillRect(x - candleWidth / 2, bodyTop, candleWidth, bodyHeight);
     });
 
-    // 标注布林带
+    // 布林带
     if (indicators) {
       const { bb_upper, bb_lower } = indicators;
       const upperY = padding + (1 - (bb_upper - minPrice) / priceRange) * chartHeight;
@@ -252,7 +296,6 @@ export default function TradingPage() {
     }
   }, [candlesticks, indicators, ticker]);
 
-  // Canvas resize
   useEffect(() => {
     const handleResize = () => {
       if (chartRef.current && canvasRef.current) {
@@ -267,6 +310,10 @@ export default function TradingPage() {
 
   // 启动机器人
   const handleStart = async () => {
+    if (!apiKeys) {
+      setShowApiModal(true);
+      return;
+    }
     setIsLoading(true);
     try {
       const res = await fetch('/api/botstatus', {
@@ -277,18 +324,23 @@ export default function TradingPage() {
           symbol: selectedPair.symbol,
           interval,
           leverage,
+          exchange: selectedExchange,
+          apiKey: apiKeys.apiKey,
+          secretKey: apiKeys.secretKey,
+          passphrase: apiKeys.passphrase,
         }),
       });
       const data = await res.json();
       if (data.success) {
-        botRef.current = true;
-        setBotStatus(prev => ({ ...prev, running: true, symbol: selectedPair.symbol, interval, leverage }));
-        // 启动轮询
         if (intervalRef.current) clearInterval(intervalRef.current);
-        intervalRef.current = globalThis.setInterval(fetchData, 10000); // 每10秒刷新
+        intervalRef.current = globalThis.setInterval(fetchData, 8000);
+        setBotStatus(prev => ({ ...prev, running: true, connected: true }));
+      } else {
+        alert(data.error || '启动失败');
       }
     } catch (e) {
       console.error('Start error:', e);
+      alert('启动失败，请检查API配置');
     }
     setIsLoading(false);
   };
@@ -302,7 +354,6 @@ export default function TradingPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'stop' }),
       });
-      botRef.current = false;
       if (intervalRef.current) clearInterval(intervalRef.current);
       setBotStatus(prev => ({ ...prev, running: false }));
     } catch (e) {
@@ -311,23 +362,29 @@ export default function TradingPage() {
     setIsLoading(false);
   };
 
-  // 清理
+  // 连接API
+  const handleApiConnect = (keys: { apiKey: string; secretKey: string; passphrase?: string }) => {
+    setApiKeys(keys);
+    setShowApiModal(false);
+    setBotStatus(prev => ({ ...prev, connected: true }));
+  };
+
   useEffect(() => {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, []);
 
-  const getSignalColor = (signal: string) => {
-    if (signal === 'buy') return 'text-green-400';
-    if (signal === 'sell') return 'text-red-400';
-    return 'text-gray-400';
-  };
-
   const getConfidenceColor = (conf: number) => {
     if (conf >= 80) return 'text-green-400';
     if (conf >= 60) return 'text-yellow-400';
     return 'text-red-400';
+  };
+
+  const getSignalColor = (signal: string) => {
+    if (signal === 'buy') return 'text-green-400';
+    if (signal === 'sell') return 'text-red-400';
+    return 'text-gray-400';
   };
 
   return (
@@ -342,15 +399,18 @@ export default function TradingPage() {
               <h1 className='text-3xl md:text-4xl font-bold text-white'>
                 {t('trading.title')}<span className='text-blue-400'> {t('trading.futures')}</span>
               </h1>
-              <p className='text-gray-400 mt-1'>
-                {t('trading.subtitle')}
-              </p>
+              <p className='text-gray-400 mt-1'>{t('trading.subtitle')}</p>
             </div>
             <div className='flex items-center gap-3'>
               <span className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold ${botStatus.running ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
                 <span className={`w-2 h-2 rounded-full animate-pulse ${botStatus.running ? 'bg-green-400' : 'bg-red-400'}`}></span>
                 {botStatus.running ? '运行中' : '已停止'}
               </span>
+              {botStatus.connected && (
+                <span className='flex items-center gap-2 bg-green-500/20 text-green-400 px-3 py-2 rounded-full text-xs'>
+                  ✓ 已连接 {exchanges[selectedExchange]?.name}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -362,6 +422,19 @@ export default function TradingPage() {
           {/* 控制面板 */}
           <div className='bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 border border-slate-700'>
             <div className='flex flex-wrap items-center gap-4'>
+
+              {/* 交易所选择 */}
+              <div>
+                <label className='text-xs text-gray-400 block mb-1'>交易所</label>
+                <div className='flex gap-2'>
+                  {(Object.keys(exchanges) as Exchange[]).map(ex => (
+                    <button key={ex} onClick={() => setSelectedExchange(ex)} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1 ${selectedExchange === ex ? 'bg-gradient-to-r ' + exchanges[ex].color + ' text-white' : 'bg-slate-700 text-gray-400 hover:bg-slate-600'}`}>
+                      <span>{exchanges[ex].icon}</span> {exchanges[ex].name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* 币种搜索 */}
               <div className='relative'>
                 <label className='text-xs text-gray-400 block mb-1'>{t('trading.selectSymbol')}</label>
@@ -379,11 +452,7 @@ export default function TradingPage() {
                     <div className='absolute top-full mt-1 left-0 w-64 bg-slate-800 border border-slate-600 rounded-xl shadow-xl z-50 max-h-64 overflow-y-auto'>
                       {filteredPairs.length === 0 && <div className='p-3 text-gray-400 text-sm'>无结果</div>}
                       {filteredPairs.map(pair => (
-                        <div key={pair.symbol} className='flex items-center justify-between px-4 py-2 hover:bg-slate-700 cursor-pointer' onMouseDown={() => {
-                          setSelectedPair(pair);
-                          setSearchQuery('');
-                          setShowSymbolDropdown(false);
-                        }}>
+                        <div key={pair.symbol} className='flex items-center justify-between px-4 py-2 hover:bg-slate-700 cursor-pointer' onMouseDown={() => { setSelectedPair(pair); setSearchQuery(''); setShowSymbolDropdown(false); }}>
                           <span className='text-white font-bold'>{pair.base}</span>
                           <span className='text-yellow-400 text-xs'>futures</span>
                         </div>
@@ -393,14 +462,12 @@ export default function TradingPage() {
                 </div>
               </div>
 
-              {/* 周期选择 */}
+              {/* 周期 */}
               <div>
                 <label className='text-xs text-gray-400 block mb-1'>K线周期</label>
                 <div className='flex gap-1'>
                   {INTERVALS.map(int => (
-                    <button key={int} onClick={() => setIntervalState(int)} className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${interval === int ? 'bg-blue-500 text-white' : 'bg-slate-700 text-gray-400 hover:bg-slate-600'}`}>
-                      {int}
-                    </button>
+                    <button key={int} onClick={() => setIntervalState(int)} className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${interval === int ? 'bg-blue-500 text-white' : 'bg-slate-700 text-gray-400 hover:bg-slate-600'}`}>{int}</button>
                   ))}
                 </div>
               </div>
@@ -411,8 +478,13 @@ export default function TradingPage() {
                 <input type='range' min='1' max='125' value={leverage} onChange={e => setLeverage(parseInt(e.target.value))} className='w-24 accent-blue-500' />
               </div>
 
-              {/* 启动/停止按钮 */}
-              <div className='ml-auto flex gap-3 items-end'>
+              {/* API连接 */}
+              <button onClick={() => setShowApiModal(true)} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${apiKeys ? 'bg-green-500/20 text-green-400 border border-green-500/50' : 'bg-slate-700 text-gray-400 hover:bg-slate-600'}`}>
+                {apiKeys ? '✓ API已配置' : '🔗 配置API'}
+              </button>
+
+              {/* 启动/停止 */}
+              <div className='ml-auto'>
                 {!botStatus.running ? (
                   <button onClick={handleStart} disabled={isLoading} className='bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white px-8 py-3 rounded-xl font-bold text-lg transition-all disabled:opacity-50 shadow-lg shadow-green-500/30'>
                     ▶ 启动策略
@@ -427,7 +499,7 @@ export default function TradingPage() {
           </div>
 
           <div className='grid grid-cols-1 lg:grid-cols-3 gap-6'>
-            {/* 左侧 - 指标与状态 */}
+            {/* 左侧 */}
             <div className='space-y-4'>
               {/* 策略信号 */}
               <div className='bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 border border-slate-700'>
@@ -444,7 +516,7 @@ export default function TradingPage() {
                   <div className='flex justify-between'><span className='text-gray-400'>RSI(14)</span><span className={indicators?.rsi && indicators.rsi < 30 ? 'text-green-400' : indicators?.rsi && indicators.rsi > 70 ? 'text-red-400' : 'text-white'}>{indicators?.rsi?.toFixed(1) || '--'}</span></div>
                   <div className='flex justify-between'><span className='text-gray-400'>MACD</span><span className={indicators?.macd && indicators.macd > indicators.macd_signal ? 'text-green-400' : 'text-red-400'}>{indicators?.macd?.toFixed(2) || '--'}</span></div>
                   <div className='flex justify-between'><span className='text-gray-400'>MACD Signal</span><span className='text-cyan-400'>{indicators?.macd_signal?.toFixed(2) || '--'}</span></div>
-                  <div className='flex justify-between'><span className='text-gray-400'>布林带位置</span><span className={indicators?.bb_position && indicators.bb_position < 0.2 ? 'text-green-400' : indicators?.bb_position && indicators.bb_position > 0.8 ? 'text-red-400' : 'text-white'}>{indicators?.bb_position?.toFixed(3) || '--'}</span></div>
+                  <div className='flex justify-between'><span className='text-gray-400'>布林带位置</span><span className='text-purple-400'>{indicators?.bb_position?.toFixed(3) || '--'}</span></div>
                   <div className='flex justify-between'><span className='text-gray-400'>布林上轨</span><span className='text-purple-400'>${indicators?.bb_upper?.toFixed(2) || '--'}</span></div>
                   <div className='flex justify-between'><span className='text-gray-400'>布林下轨</span><span className='text-purple-400'>${indicators?.bb_lower?.toFixed(2) || '--'}</span></div>
                   <div className='flex justify-between'><span className='text-gray-400'>支撑位</span><span className='text-green-400'>${indicators?.support?.toFixed(2) || '--'}</span></div>
@@ -487,17 +559,17 @@ export default function TradingPage() {
                   </div>
                   <div className='flex justify-between'>
                     <span className='text-gray-400'>止损/止盈</span>
-                    <span className='text-white'>{botStatus.stop_loss}% / +{botStatus.take_profit}%</span>
+                    <span className='text-white'>-5% / +10%</span>
                   </div>
                   {botStatus.paused && (
                     <div className='bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-2 text-center'>
-                      <span className='text-yellow-400 text-xs'>⚠️ 连续亏损触发暂停</span>
+                      <span className='text-yellow-400 text-xs'>⚠️ 连续亏损触发暂停(24h)</span>
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* 当前行情 */}
+              {/* 行情 */}
               {ticker && (
                 <div className='bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 border border-slate-700'>
                   <h3 className='text-sm font-bold text-gray-400 mb-3'>💹 {selectedPair.base} 实时行情</h3>
@@ -514,7 +586,7 @@ export default function TradingPage() {
               )}
             </div>
 
-            {/* 中间 - K线图 */}
+            {/* 中右 */}
             <div className='lg:col-span-2 space-y-4'>
               {/* K线图 */}
               <div className='bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 border border-slate-700'>
@@ -527,46 +599,60 @@ export default function TradingPage() {
                 </div>
               </div>
 
-              {/* 交易日志 */}
+              {/* 详细订单日志 */}
               <div className='bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 border border-slate-700'>
-                <h3 className='text-lg font-bold text-white mb-4'>📋 交易日志</h3>
+                <h3 className='text-lg font-bold text-white mb-4'>📋 合约订单日志</h3>
                 {tradeLog.length === 0 ? (
-                  <div className='text-center text-gray-500 py-8'>暂无交易记录</div>
+                  <div className='text-center text-gray-500 py-8'>暂无订单记录{!apiKeys && ' - 请先配置API密钥'}</div>
                 ) : (
                   <div className='overflow-x-auto'>
-                    <table className='w-full text-sm'>
+                    <table className='w-full text-xs'>
                       <thead>
                         <tr className='text-gray-400 border-b border-slate-700'>
                           <th className='text-left py-2 px-2'>时间</th>
+                          <th className='text-left py-2 px-2'>交易所</th>
+                          <th className='text-left py-2 px-2'>订单ID</th>
                           <th className='text-left py-2 px-2'>方向</th>
-                          <th className='text-left py-2 px-2'>原因</th>
-                          <th className='text-left py-2 px-2'>价格</th>
+                          <th className='text-left py-2 px-2'>币种</th>
+                          <th className='text-left py-2 px-2'>开仓价</th>
                           <th className='text-left py-2 px-2'>数量</th>
-                          <th className='text-left py-2 px-2'>置信度</th>
+                          <th className='text-left py-2 px-2'>杠杆</th>
+                          <th className='text-left py-2 px-2'>保证金</th>
+                          <th className='text-left py-2 px-2'>状态</th>
                           <th className='text-left py-2 px-2'>盈亏</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {tradeLog.slice(0, 20).map((trade, i) => (
+                        {tradeLog.slice(0, 30).map((trade, i) => (
                           <tr key={i} className='border-b border-slate-700/50 hover:bg-slate-700/30'>
-                            <td className='py-2 px-2 text-gray-400 text-xs'>{new Date(trade.time).toLocaleString()}</td>
+                            <td className='py-2 px-2 text-gray-400'>{new Date(trade.time).toLocaleString()}</td>
                             <td className='py-2 px-2'>
-                              <span className={`px-2 py-0.5 rounded text-xs font-bold ${trade.side === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                                {trade.side === 'buy' ? '买入' : '卖出'}
+                              <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${trade.exchange === 'binance' ? 'bg-yellow-500/20 text-yellow-400' : trade.exchange === 'okx' ? 'bg-blue-500/20 text-blue-400' : 'bg-amber-500/20 text-amber-400'}`}>
+                                {trade.exchange?.toUpperCase() || '--'}
                               </span>
                             </td>
-                            <td className='py-2 px-2 text-gray-300 text-xs'>{trade.reason}</td>
+                            <td className='py-2 px-2 text-blue-400 font-mono text-xs'>{trade.orderId || '--'}</td>
+                            <td className='py-2 px-2'>
+                              <span className={`px-2 py-0.5 rounded text-xs font-bold ${trade.side === 'buy' || trade.side === 'long' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                                {trade.side === 'buy' || trade.side === 'long' ? '做多' : trade.side === 'short' ? '做空' : '卖出'}
+                              </span>
+                            </td>
+                            <td className='py-2 px-2 text-white font-bold'>{trade.amount || selectedPair.base}</td>
                             <td className='py-2 px-2 text-white'>${trade.price}</td>
                             <td className='py-2 px-2 text-white'>{trade.amount}</td>
+                            <td className='py-2 px-2 text-yellow-400'>{trade.leverage || leverage}x</td>
+                            <td className='py-2 px-2 text-cyan-400'>${trade.margin?.toFixed(2) || '--'}</td>
                             <td className='py-2 px-2'>
-                              {trade.confidence ? (
-                                <span className={`text-xs font-bold ${trade.confidence >= 75 ? 'text-green-400' : 'text-yellow-400'}`}>{trade.confidence}%</span>
-                              ) : <span className='text-gray-500'>--</span>}
+                              <span className={`px-2 py-0.5 rounded text-xs font-bold ${trade.status === 'FILLED' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                                {trade.status || 'FILLED'}
+                              </span>
                             </td>
                             <td className='py-2 px-2'>
                               {trade.pnl !== undefined ? (
-                                <span className={trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}>{trade.pnl >= 0 ? '+' : ''}{trade.pnl.toFixed(2)} ({trade.pnl_pct?.toFixed(2)}%)</span>
-                              ) : <span className='text-gray-500'>--</span>}
+                                <span className={trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                  {trade.pnl >= 0 ? '+' : ''}{trade.pnl.toFixed(2)} ({trade.pnl_pct?.toFixed(2)}%)
+                                </span>
+                              ) : <span className='text-gray-500'>持仓中</span>}
                             </td>
                           </tr>
                         ))}
@@ -591,6 +677,16 @@ export default function TradingPage() {
           </div>
         </div>
       </div>
+
+      {/* API配置弹窗 */}
+      {showApiModal && (
+        <ApiModal
+          exchange={selectedExchange}
+          config={exchanges[selectedExchange]}
+          onClose={() => setShowApiModal(false)}
+          onSubmit={handleApiConnect}
+        />
+      )}
     </div>
   );
 }
@@ -622,5 +718,53 @@ function Navbar() {
         </div>
       </div>
     </nav>
+  );
+}
+
+function ApiModal({ exchange, config, onClose, onSubmit }: { exchange: string; config: ExchangeConfig; onClose: () => void; onSubmit: (keys: { apiKey: string; secretKey: string; passphrase?: string }) => void }) {
+  const [apiKey, setApiKey] = useState('');
+  const [secretKey, setSecretKey] = useState('');
+  const [passphrase, setPassphrase] = useState('');
+
+  const handleSubmit = () => { if (!apiKey || !secretKey) return; onSubmit({ apiKey, secretKey, passphrase }); };
+
+  return (
+    <div className='fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4'>
+      <div className='bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-8 max-w-md w-full border border-slate-700'>
+        <div className='flex items-center justify-between mb-6'>
+          <div className='flex items-center gap-3'>
+            <div className={`w-10 h-10 bg-gradient-to-r ${config.color} rounded-lg flex items-center justify-center text-white font-bold`}>{config.icon}</div>
+            <div><h3 className='text-xl font-bold text-white'>导入 {config.name} API</h3><p className='text-xs text-gray-500'>合约交易 API Key</p></div>
+          </div>
+          <button onClick={onClose} className='text-gray-400 hover:text-white text-2xl'>&times;</button>
+        </div>
+
+        <div className='space-y-4'>
+          <div>
+            <label className='text-sm text-gray-400 mb-2 block'>API Key</label>
+            <input type='text' value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder='请输入 API Key' className='w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500' />
+          </div>
+          <div>
+            <label className='text-sm text-gray-400 mb-2 block'>Secret Key</label>
+            <input type='password' value={secretKey} onChange={e => setSecretKey(e.target.value)} placeholder='请输入 Secret Key' className='w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500' />
+          </div>
+          {exchange === 'okx' && (
+            <div>
+              <label className='text-sm text-gray-400 mb-2 block'>Passphrase</label>
+              <input type='password' value={passphrase} onChange={e => setPassphrase(e.target.value)} placeholder='请输入 Passphrase' className='w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500' />
+            </div>
+          )}
+        </div>
+
+        <div className='mt-6 bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4'>
+          <p className='text-yellow-400 text-sm'>⚠️ 请确保API权限开启合约交易权限，不要开启提币权限</p>
+        </div>
+
+        <div className='flex gap-4 mt-6'>
+          <button onClick={onClose} className='flex-1 py-3 bg-slate-700 text-white rounded-xl font-medium hover:bg-slate-600 transition-colors'>取消</button>
+          <button onClick={handleSubmit} disabled={!apiKey || !secretKey} className='flex-1 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl font-medium hover:from-blue-600 hover:to-cyan-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed'>连接</button>
+        </div>
+      </div>
+    </div>
   );
 }
