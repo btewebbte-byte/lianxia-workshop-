@@ -7,33 +7,28 @@ export async function GET(request: NextRequest) {
   const type = searchParams.get('type') || 'spot';
 
   try {
-    let data;
-    
+    let url: string;
     if (type === 'futures') {
-      // Binance USDT-M Futures K-lines
-      const response = await fetch(
-        `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol.toUpperCase()}&interval=${interval}&limit=100`
-      );
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch futures kline data');
-      }
-      
-      data = await response.json();
+      url = `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol.toUpperCase()}&interval=${interval}&limit=100`;
     } else {
-      // Binance Spot K-lines
-      const response = await fetch(
-        `https://api.binance.com/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=${interval}&limit=100`
-      );
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch kline data');
-      }
-      
-      data = await response.json();
+      url = `https://api.binance.com/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=${interval}&limit=100`;
     }
-    
-    // Transform to candlestick format
+
+    const response = await fetch(url, {
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      return NextResponse.json({ error: `Binance API error: ${response.status} - ${text}` }, { status: 502 });
+    }
+
+    const data = await response.json();
+
     const candlesticks = data.map((k: any[]) => ({
       time: k[0] / 1000,
       open: parseFloat(k[1]),
@@ -44,7 +39,7 @@ export async function GET(request: NextRequest) {
     }));
 
     return NextResponse.json(candlesticks);
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to fetch data' }, { status: 500 });
+  } catch (error: any) {
+    return NextResponse.json({ error: `Network error: ${error.message}` }, { status: 500 });
   }
 }
