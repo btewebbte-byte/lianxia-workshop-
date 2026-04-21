@@ -1,75 +1,80 @@
+'use client';
+
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import Link from 'next/link';
+import { useI18n } from '@/lib/i18n';
 
 export default function ServicesPage() {
+  const { t } = useI18n();
+
   const services = [
     {
-      category: '区块链技术',
+      category: 'nav.services',
       items: [
         {
-          title: '区块链架构咨询',
-          description: '公链/联盟链选型、节点部署、共识机制设计',
+          title: t('services.consulting'),
+          description: t('services.consulting.desc'),
           price: '$500起',
-          features: ['技术选型分析', '架构设计文档', '实施路线图']
+          features: ['services.consulting.feature1', 'services.consulting.feature2', 'services.consulting.feature3']
         },
         {
-          title: '智能合约开发',
-          description: 'Solidity/Rust智能合约开发、测试与部署',
+          title: t('services.contract'),
+          description: t('services.contract.desc'),
           price: '$800起',
-          features: ['合约代码开发', '单元测试', '主网部署']
+          features: ['services.contract.feature1', 'services.contract.feature2', 'services.contract.feature3']
         },
         {
-          title: '合约安全审计',
-          description: '智能合约安全漏洞检测与修复建议',
+          title: 'Security Audit',
+          description: 'Smart Contract Security Audit',
           price: '$1,000起',
-          features: ['静态分析', '动态测试', '审计报告']
+          features: ['Static Analysis', 'Dynamic Testing', 'Audit Report']
         }
       ]
     },
     {
-      category: 'DeFi策略',
+      category: 'DeFi Strategy',
       items: [
         {
-          title: '流动性挖矿策略',
-          description: 'LP挖矿收益优化、无常损失对冲',
+          title: 'Liquidity Mining',
+          description: 'LP Mining Yield Optimization',
           price: '$600起',
-          features: ['收益模拟', '风险评估', '策略实施']
+          features: ['Yield Simulation', 'Risk Assessment', 'Strategy Implementation']
         },
         {
-          title: '收益聚合器设计',
-          description: '多协议收益聚合、自动复投策略',
+          title: 'Yield Aggregator',
+          description: 'Multi-protocol Yield Aggregation',
           price: '$1,200起',
-          features: ['协议集成', '风控机制', 'UI设计']
+          features: ['Protocol Integration', 'Risk Control', 'UI Design']
         },
         {
-          title: '交易策略开发',
-          description: '量化交易策略、套利机器人开发',
+          title: 'Trading Bot',
+          description: 'Quant Trading & Arbitrage Bot',
           price: '$1,500起',
-          features: ['策略回测', '实盘部署', '监控系统']
+          features: ['Backtesting', 'Live Deployment', 'Monitoring']
         }
       ]
     },
     {
-      category: 'AI自动化',
+      category: 'AI Automation',
       items: [
         {
-          title: 'AI业务自动化',
-          description: '工作流自动化、数据采集与处理',
+          title: t('services.ai'),
+          description: t('services.ai.desc'),
           price: '$400起',
-          features: ['流程分析', '自动化设计', '部署维护']
+          features: ['Process Analysis', 'Automation Design', 'Deployment']
         },
         {
-          title: '数据分析与报告',
-          description: '链上数据分析、可视化报表生成',
+          title: 'Data Analysis',
+          description: 'On-chain Data Analytics & Reports',
           price: '$300起',
-          features: ['数据采集', '分析建模', '报告生成']
+          features: ['Data Collection', 'Modeling', 'Reporting']
         },
         {
-          title: 'AI客服系统',
-          description: '智能客服机器人、多渠道响应',
+          title: 'AI Customer Service',
+          description: 'Intelligent Bot, Multi-channel',
           price: '$800起',
-          features: ['对话设计', '系统集成', '持续优化']
+          features: ['Dialogue Design', 'Integration', 'Optimization']
         }
       ]
     }
@@ -82,9 +87,9 @@ export default function ServicesPage() {
       <section className="pt-32 pb-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
-            <h1 className="text-5xl font-bold text-gray-900 mb-6">服务与报价</h1>
+            <h1 className="text-5xl font-bold text-gray-900 mb-6">{t('services.title')}</h1>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-              链虾工坊提供全方位的区块链+AI解决方案，所有服务由AI大龙虾🦞亲自打理
+              {t('ai.desc1')}
             </p>
           </div>
 
@@ -98,7 +103,7 @@ export default function ServicesPage() {
                     <p className="text-gray-600 mb-6">{service.description}</p>
                     
                     <div className="mb-6">
-                      <div className="text-sm text-gray-500 mb-2">包含功能：</div>
+                      <div className="text-sm text-gray-500 mb-2">Includes:</div>
                       <ul className="space-y-2">
                         {service.features.map((feature, idx) => (
                           <li key={idx} className="flex items-center text-gray-700">
@@ -113,13 +118,13 @@ export default function ServicesPage() {
                       <div className="flex justify-between items-center">
                         <div>
                           <div className="text-2xl font-bold text-gray-900">{service.price}</div>
-                          <div className="text-sm text-gray-500">USDT计价</div>
+                          <div className="text-sm text-gray-500">USDT</div>
                         </div>
                         <Link 
                           href="/contact" 
                           className="bg-gradient-to-r from-orange-500 to-red-500 text-white px-6 py-3 rounded-full hover:opacity-90 transition-opacity"
                         >
-                          立即咨询
+                          {t('contact.form.submit')}
                         </Link>
                       </div>
                     </div>
@@ -131,16 +136,15 @@ export default function ServicesPage() {
 
           <div className="bg-gradient-to-r from-orange-50 to-red-50 rounded-3xl p-8 md:p-12 mt-16">
             <div className="text-center">
-              <h2 className="text-3xl font-bold text-gray-900 mb-6">定制化解决方案</h2>
+              <h2 className="text-3xl font-bold text-gray-900 mb-6">Custom Solutions</h2>
               <p className="text-xl text-gray-700 mb-8 max-w-3xl mx-auto">
-                如果您有特殊需求或复杂项目，我们可以提供完全定制化的解决方案。
-                AI大龙虾🦞将根据您的具体需求设计专属服务方案。
+                {t('ai.desc1')}
               </p>
               <Link 
                 href="/contact" 
                 className="inline-block bg-gradient-to-r from-orange-500 to-red-500 text-white px-10 py-4 rounded-full text-lg font-semibold hover:opacity-90 transition-opacity"
               >
-                获取定制方案
+                {t('cta.btn.contact')}
               </Link>
             </div>
           </div>

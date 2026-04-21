@@ -3,8 +3,10 @@
 import { useState } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import { useI18n } from '@/lib/i18n';
 
 export default function ContactPage() {
+  const { t } = useI18n();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -32,7 +34,6 @@ export default function ContactPage() {
     setIsSubmitting(false);
     setSubmitSuccess(true);
     
-    // 重置表单
     setFormData({
       name: '',
       email: '',
@@ -42,48 +43,47 @@ export default function ContactPage() {
       message: ''
     });
     
-    // 5秒后重置成功状态
     setTimeout(() => setSubmitSuccess(false), 5000);
   };
 
   const contactMethods = [
     {
-      title: '微信咨询',
-      description: '添加微信好友，直接与AI大龙虾沟通',
-      details: '微信号: webpipi',
+      title: t('contact.wechat.title'),
+      description: t('contact.wechat.desc'),
+      details: t('contact.wechat.detail'),
       icon: '💬'
     },
     {
-      title: '电子邮件',
-      description: '发送详细需求，获取专业方案',
+      title: t('contact.email.title'),
+      description: t('contact.email.desc'),
       details: 'nibulai12345@163.com',
       icon: '📧'
     },
     {
-      title: '加密货币收款',
-      description: '支持BSC/BNB Chain及所有ERC-20链',
+      title: t('contact.crypto.title'),
+      description: t('contact.crypto.desc'),
       details: '0x7393eB772Bc632F6655c3abC235D2202CeaCbbb6',
       icon: '💰'
     },
     {
-      title: '工作时间',
-      description: 'AI管家7x24小时在线响应',
-      details: '随时联系，即时回复',
+      title: t('contact.hours.title'),
+      description: t('contact.hours.desc'),
+      details: '7x24',
       icon: '⏰'
     }
   ];
 
   const services = [
-    '区块链架构咨询',
-    '智能合约开发',
-    '合约安全审计',
-    '流动性挖矿策略',
-    '收益聚合器设计',
-    '交易策略开发',
-    'AI业务自动化',
-    '数据分析与报告',
-    'AI客服系统',
-    '定制化解决方案'
+    t('services.consulting'),
+    t('services.contract'),
+    'DeFi ' + t('services.defi'),
+    t('services.ai'),
+    'Smart Contract ' + t('services.consulting'),
+    'Security Audit',
+    'Yield Strategy',
+    'Trading Bot',
+    'Data Analysis',
+    'Custom Solution'
   ];
 
   return (
@@ -93,22 +93,22 @@ export default function ContactPage() {
       <section className="pt-32 pb-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
-            <h1 className="text-5xl font-bold text-gray-900 mb-6">联系我们</h1>
+            <h1 className="text-5xl font-bold text-gray-900 mb-6">{t('contact.title')}</h1>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-              无论您有具体项目需求还是想了解我们的服务，AI大龙虾🦞都随时准备为您提供专业咨询。
+              {t('contact.subtitle')}
             </p>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
             {/* Contact Form */}
             <div className="bg-white rounded-2xl shadow-lg p-8">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">发送咨询需求</h2>
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">{t('contact.form.title')}</h2>
               
               {submitSuccess && (
                 <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
                   <div className="flex items-center">
                     <span className="text-green-500 mr-2">✓</span>
-                    <span className="text-green-700">咨询需求已发送！AI大龙虾将在24小时内与您联系。</span>
+                    <span className="text-green-700">{t('contact.form.success')}</span>
                   </div>
                 </div>
               )}
@@ -117,7 +117,7 @@ export default function ContactPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
-                      姓名 *
+                      {t('contact.form.name')}
                     </label>
                     <input
                       type="text"
@@ -127,13 +127,13 @@ export default function ContactPage() {
                       onChange={handleChange}
                       required
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                      placeholder="请输入您的姓名"
+                      placeholder={t('contact.form.name')}
                     />
                   </div>
                   
                   <div>
                     <label htmlFor="company" className="block text-sm font-medium text-gray-700 mb-2">
-                      公司/项目名称
+                      {t('contact.form.company')}
                     </label>
                     <input
                       type="text"
@@ -142,7 +142,7 @@ export default function ContactPage() {
                       value={formData.company}
                       onChange={handleChange}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                      placeholder="请输入公司或项目名称"
+                      placeholder={t('contact.form.company')}
                     />
                   </div>
                 </div>
@@ -150,7 +150,7 @@ export default function ContactPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                      邮箱 *
+                      {t('contact.form.email')}
                     </label>
                     <input
                       type="email"
@@ -160,13 +160,13 @@ export default function ContactPage() {
                       onChange={handleChange}
                       required
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                      placeholder="请输入您的邮箱"
+                      placeholder={t('contact.form.email')}
                     />
                   </div>
                   
                   <div>
                     <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-2">
-                      联系电话
+                      {t('contact.form.phone')}
                     </label>
                     <input
                       type="tel"
@@ -175,14 +175,14 @@ export default function ContactPage() {
                       value={formData.phone}
                       onChange={handleChange}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                      placeholder="请输入联系电话"
+                      placeholder={t('contact.form.phone')}
                     />
                   </div>
                 </div>
 
                 <div>
                   <label htmlFor="service" className="block text-sm font-medium text-gray-700 mb-2">
-                    感兴趣的服务 *
+                    {t('contact.form.service')}
                   </label>
                   <select
                     id="service"
@@ -192,7 +192,7 @@ export default function ContactPage() {
                     required
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                   >
-                    <option value="">请选择服务类型</option>
+                    <option value="">--</option>
                     {services.map((service, index) => (
                       <option key={index} value={service}>{service}</option>
                     ))}
@@ -201,7 +201,7 @@ export default function ContactPage() {
 
                 <div>
                   <label htmlFor="message" className="block text-sm font-medium text-gray-700 mb-2">
-                    项目需求描述 *
+                    {t('contact.form.message')}
                   </label>
                   <textarea
                     id="message"
@@ -211,7 +211,7 @@ export default function ContactPage() {
                     required
                     rows={6}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                    placeholder="请详细描述您的项目需求、预算范围和时间要求..."
+                    placeholder={t('contact.form.message')}
                   />
                 </div>
 
@@ -221,10 +221,10 @@ export default function ContactPage() {
                     disabled={isSubmitting}
                     className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white py-4 rounded-lg font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
                   >
-                    {isSubmitting ? '发送中...' : '发送咨询需求'}
+                    {isSubmitting ? t('contact.form.submitting') : t('contact.form.submit')}
                   </button>
                   <p className="text-sm text-gray-500 mt-2 text-center">
-                    提交后，AI大龙虾🦞将在24小时内通过您提供的联系方式与您沟通。
+                    {t('contact.form.note')}
                   </p>
                 </div>
               </form>
@@ -233,7 +233,7 @@ export default function ContactPage() {
             {/* Contact Info */}
             <div>
               <div className="mb-8">
-                <h2 className="text-2xl font-bold text-gray-900 mb-6">联系信息</h2>
+                <h2 className="text-2xl font-bold text-gray-900 mb-6">{t('contact.info.title')}</h2>
                 <div className="space-y-6">
                   {contactMethods.map((method, index) => (
                     <div key={index} className="flex items-start gap-4">
@@ -258,23 +258,23 @@ export default function ContactPage() {
                     </div>
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-3">AI大龙虾管家承诺</h3>
+                    <h3 className="text-xl font-bold text-gray-900 mb-3">{t('contact.promise.title')}</h3>
                     <ul className="space-y-3">
                       <li className="flex items-center text-gray-700">
                         <span className="text-green-500 mr-2">✓</span>
-                        <span>24小时内响应咨询</span>
+                        <span>{t('contact.promise.1')}</span>
                       </li>
                       <li className="flex items-center text-gray-700">
                         <span className="text-green-500 mr-2">✓</span>
-                        <span>免费初步方案评估</span>
+                        <span>{t('contact.promise.2')}</span>
                       </li>
                       <li className="flex items-center text-gray-700">
                         <span className="text-green-500 mr-2">✓</span>
-                        <span>明码标价，无隐藏费用</span>
+                        <span>{t('contact.promise.3')}</span>
                       </li>
                       <li className="flex items-center text-gray-700">
                         <span className="text-green-500 mr-2">✓</span>
-                        <span>项目全程AI跟踪优化</span>
+                        <span>{t('contact.promise.4')}</span>
                       </li>
                     </ul>
                   </div>
@@ -282,38 +282,16 @@ export default function ContactPage() {
               </div>
 
               <div className="mt-8 bg-white rounded-2xl shadow-lg p-8">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">典型咨询流程</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('contact.process.title')}</h3>
                 <div className="space-y-4">
-                  <div className="flex items-center">
-                    <div className="w-8 h-8 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mr-3">
-                      1
+                  {[1, 2, 3, 4, 5].map(num => (
+                    <div key={num} className="flex items-center">
+                      <div className="w-8 h-8 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mr-3">
+                        {num}
+                      </div>
+                      <span className="text-gray-700">{t(`contact.process.${num}`)}</span>
                     </div>
-                    <span className="text-gray-700">提交咨询需求</span>
-                  </div>
-                  <div className="flex items-center">
-                    <div className="w-8 h-8 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mr-3">
-                      2
-                    </div>
-                    <span className="text-gray-700">AI大龙虾初步分析</span>
-                  </div>
-                  <div className="flex items-center">
-                    <div className="w-8 h-8 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mr-3">
-                      3
-                    </div>
-                    <span className="text-gray-700">免费方案沟通</span>
-                  </div>
-                  <div className="flex items-center">
-                    <div className="w-8 h-8 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mr-3">
-                      4
-                    </div>
-                    <span className="text-gray-700">确定合作细节</span>
-                  </div>
-                  <div className="flex items-center">
-                    <div className="w-8 h-8 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mr-3">
-                      5
-                    </div>
-                    <span className="text-gray-700">项目启动与执行</span>
-                  </div>
+                  ))}
                 </div>
               </div>
             </div>
